@@ -1,6 +1,5 @@
 .env
 # This personalized example contains the real development database password.
-.env.example
 .venv/
 __pycache__/
 *.py[cod]
