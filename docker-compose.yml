@@ -1,0 +1,43 @@
+name: aws_rag
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aws_rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d aws_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  migrate:
+    build: ./backend
+    env_file: ${RAG_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql+psycopg://rag:rag@postgres:5432/aws_rag
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  backend:
+    build: ./backend
+    env_file: ${RAG_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql+psycopg://rag:rag@postgres:5432/aws_rag
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  frontend:
+    build: ./frontend
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      backend: {condition: service_healthy}
+volumes:
+  postgres_data:

@@ -1,0 +1,3 @@
+ARG BACKEND_IMAGE=aws-rag-backend:local
+FROM ${BACKEND_IMAGE}
+COPY rds-ca.pem /app/certs/rds-ca.pem

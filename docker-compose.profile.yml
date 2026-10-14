@@ -1,0 +1,9 @@
+# Optional local credential-chain mount. Log in on the host first.
+services:
+  backend:
+    environment:
+      AWS_PROFILE: ${AWS_PROFILE:-default}
+      AWS_CONFIG_FILE: /home/appuser/.aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /home/appuser/.aws/credentials
+    volumes:
+      - ${USERPROFILE}/.aws:/home/appuser/.aws:ro

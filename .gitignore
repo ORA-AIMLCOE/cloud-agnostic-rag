@@ -1,0 +1,20 @@
+.env
+# This personalized example contains the real development database password.
+.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.db
+node_modules/
+dist/
+.terraform/
+*.tfstate*
+*.tfvars
+!*.tfvars.example
+*.log
+.validation/
+.tools/
+*.tsbuildinfo
+*.plan

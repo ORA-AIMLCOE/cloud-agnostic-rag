@@ -1,0 +1,13 @@
+{
+  "account_id": "649901308226",
+  "region": "ap-southeast-2",
+  "database_identifier": "aws-rag-postgres",
+  "database_endpoint": "aws-rag-postgres.ch6wo8k0q4pk.ap-southeast-2.rds.amazonaws.com",
+  "bridge_instance": "i-0bed6e1f2728db3fd",
+  "vpc": "vpc-01aad15bb806501ad",
+  "private_subnets": ["subnet-06788a7713a53d219", "subnet-03d88a2182ae3507b"],
+  "database_security_group": "sg-0e3c53151cc2426a9",
+  "bridge_security_group": "sg-085f70ef024828c77",
+  "knowledge_base_id": "YNZKTQSGBJ",
+  "data_source_id": "TSRBHBQ9IN"
+}

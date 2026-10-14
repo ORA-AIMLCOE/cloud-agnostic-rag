@@ -1,0 +1,39 @@
+{
+  "family": "aws-rag",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "REPLACE_EXECUTION_ROLE_ARN",
+  "taskRoleArn": "REPLACE_TASK_ROLE_ARN",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "REPLACE_BACKEND_ECR_IMAGE_URI",
+      "essential": true,
+      "portMappings": [{"containerPort":8000,"protocol":"tcp"}],
+      "environment": [
+        {"name":"CLOUD_PROVIDER","value":"aws"},
+        {"name":"AWS_REGION","value":"REPLACE_REGION"},
+        {"name":"AWS_BEDROCK_MODEL_ID","value":"REPLACE_MODEL_OR_PROFILE_ID"},
+        {"name":"AWS_S3_BUCKET","value":"REPLACE_BUCKET"},
+        {"name":"AWS_KNOWLEDGE_BASE_ID","value":"REPLACE_KB_ID"},
+        {"name":"AWS_KB_DATA_SOURCE_ID","value":"REPLACE_DATA_SOURCE_ID"},
+        {"name":"AWS_S3_PREFIX","value":"documents/"},
+        {"name":"LANGSMITH_TRACING","value":"false"}
+      ],
+      "secrets": [{"name":"DATABASE_URL","valueFrom":"REPLACE_DATABASE_URL_SECRET_ARN"}],
+      "logConfiguration": {"logDriver":"awslogs","options":{"awslogs-group":"REPLACE_LOG_GROUP","awslogs-region":"REPLACE_REGION","awslogs-stream-prefix":"backend"}},
+      "healthCheck": {"command":["CMD-SHELL","python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""],"interval":30,"timeout":5,"retries":3,"startPeriod":60}
+    },
+    {
+      "name": "frontend",
+      "image": "REPLACE_FRONTEND_ECR_IMAGE_URI",
+      "essential": true,
+      "portMappings": [{"containerPort":8080,"protocol":"tcp"}],
+      "environment": [{"name":"BACKEND_UPSTREAM","value":"127.0.0.1:8000"}],
+      "dependsOn": [{"containerName":"backend","condition":"HEALTHY"}],
+      "logConfiguration": {"logDriver":"awslogs","options":{"awslogs-group":"REPLACE_LOG_GROUP","awslogs-region":"REPLACE_REGION","awslogs-stream-prefix":"frontend"}}
+    }
+  ]
+}
