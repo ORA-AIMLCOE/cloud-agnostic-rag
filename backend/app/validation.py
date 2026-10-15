@@ -1,5 +1,6 @@
 import ast
 import hashlib
+import os
 import re
 import subprocess
 import time
@@ -141,6 +142,12 @@ def run_sandbox(workspace, image, job_id, cancelled):
         ) from exc
     if check.returncode:
         raise SafeError("Validation image is missing. Run scripts/prepare-validation.ps1 before converting.")
+    # Linux bind mounts retain host ownership. Match the service account so
+    # private (0700/0600) generated files remain readable without widening access.
+    uid = getattr(os, "geteuid", lambda: 1000)()
+    gid = getattr(os, "getegid", lambda: 1000)()
+    if uid == 0:
+        uid, gid = 1000, 1000  # Never run generated code as container root.
     name = "oci-convert-" + job_id
     command = [
         "docker",
@@ -162,9 +169,9 @@ def run_sandbox(workspace, image, job_id, cancelled):
         "--cpus",
         "2",
         "--user",
-        "1000:1000",
+        f"{uid}:{gid}",
         "--tmpfs",
-        "/tmp:rw,exec,nosuid,nodev,size=1g,uid=1000,gid=1000",
+        f"/tmp:rw,exec,nosuid,nodev,size=1g,uid={uid},gid={gid}",
         "--mount",
         f"type=bind,source={workspace.resolve()},target=/source,readonly",
         image,
