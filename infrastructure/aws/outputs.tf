@@ -1,9 +1,0 @@
-output "bucket_name" { value = aws_s3_bucket.documents.id }
-output "log_group" { value = aws_cloudwatch_log_group.app.name }
-output "rds_endpoint" { value = aws_db_instance.history.address }
-output "rds_master_secret_arn" { value = aws_db_instance.history.master_user_secret[0].secret_arn }
-output "vpc_id" { value = aws_vpc.main.id }
-output "private_subnet_ids" { value = aws_subnet.private[*].id }
-output "application_security_group_id" { value = aws_security_group.app.id }
-output "task_role_arn" { value = aws_iam_role.task.arn }
-output "execution_role_arn" { value = aws_iam_role.execution.arn }

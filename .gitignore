@@ -1,19 +1,22 @@
 .env
-# This personalized example contains the real development database password.
+.env.*
+!.env.example
+.state/
+.workspaces/
+.validation/
 .venv/
 __pycache__/
-*.py[cod]
 .pytest_cache/
 .ruff_cache/
-*.db
+*.pyc
 node_modules/
 dist/
-.terraform/
-*.tfstate*
-*.tfvars
-!*.tfvars.example
-*.log
-.validation/
-.tools/
 *.tsbuildinfo
-*.plan
+*.pem
+*.key
+
+# Local wallet and credential archives
+*.p12
+*.sso
+Wallet*.zip
+config/wallet/

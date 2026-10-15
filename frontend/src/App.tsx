@@ -1,127 +1,1189 @@
-import { useEffect, useRef, useState } from 'react'
-import { api, upload, type Answer, type Document } from './api'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { api, download, type Job, type Status } from "./api";
+import { Icon } from "./Icon";
+import { CodeChanges } from "./CodeChanges";
+import { Environment } from "./Environment";
+import { activityLabel } from "./activity";
 
-const labels = { uploaded: 'Uploaded', processing: 'Processing', ready: 'Ready', failed: 'Failed' }
-const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.'
-const timestamp = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-
-function Icon({ name }: { name: 'file'|'plus'|'history'|'menu'|'arrow'|'close' }) {
-  const paths = { file: 'M14 2H6a2 2 0 0 0-2 2v16h16V8z M14 2v6h6 M8 12h8 M8 16h5', plus: 'M12 5v14 M5 12h14', history: 'M3 11a9 9 0 1 1 2 7 M3 4v7h7 M12 7v5l3 2', menu: 'M4 6h16 M4 12h16 M4 18h16', arrow: 'M12 19V5 M5 12l7-7 7 7', close: 'M6 6l12 12 M18 6 6 18' }
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]}/></svg>
+const initialTarget = {
+  region: "us-chicago-1",
+  compartment_id:
+    "ocid1.compartment.oc1..aaaaaaaadg4huvdmy2wyjt2lkg5pl4wmi2gxabxwtckbzyoz7pjggidoau2a",
+  namespace: "ax4qsxvnsmtm",
+  bucket: "cloud-agnostic-rag-documents",
+  object_prefix: "documents/",
+  llm_model_id:
+    "ocid1.generativeaimodel.oc1.us-chicago-1.amaaaaaask7dceyajj2zycru477p4okhx36wzbrhvfhka47vjqvrbcgpiapq",
+  llm_endpoint:
+    "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+  llm_format: "generic_astra",
+  llm_serving_mode: "on_demand",
+  embedding_model_id:
+    "ocid1.generativeaimodel.oc1.us-chicago-1.amaaaaaask7dceya6a7ddhqkyimvl3olp3wmllmbedfsghe633fn2e63kicq",
+  embedding_endpoint:
+    "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+  embedding_serving_mode: "on_demand",
+  embedding_dimensions: 1536,
+  embedding_set_dimensions: false,
+  chunk_chars: 1800,
+  chunk_overlap: 200,
+  db_user: "AWSOCI_RAG",
+  db_password: "",
+  db_dsn: "aimlcoesandbox_low",
+  db_wallet_dir:
+    "C:\\Users\\adarshmi\\Desktop\\EXPLORE\\0_internal_projects\\aws_vs_oci\\oci_wallets\\Wallet_AIMLCOESANDBOX",
+  db_wallet_password: "",
+  oci_profile: "DEFAULT",
+  tenancy_id: "",
+  user_id: "",
+  fingerprint: "",
+  private_key: "",
+};
+const names: Record<string, string> = {
+  queued_inspection: "Queued",
+  running: "In progress",
+  ready: "Ready to configure",
+  queued: "Queued",
+  completed: "Complete",
+  failed: "Needs attention",
+  cancelled: "Cancelled",
+  expired: "Expired",
+};
+const deletable = (status: string) =>
+  ["completed", "failed", "cancelled", "expired"].includes(status);
+const shortDate = (time: number) =>
+  new Date(time * 1000).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+const errors = (e: unknown) =>
+  e instanceof Error ? e.message : "Something went wrong.";
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+      {hint && <small>{hint}</small>}
+    </label>
+  );
 }
-function AnswerCard({ answer }: { answer: Answer }) {
-  return <article className="answer-card"><div className="question-bubble">{answer.question}</div><div className="response"><span className="response-mark" aria-hidden="true">a</span><div className="response-content"><p className="answer-text">{answer.answer}</p>{answer.sources.length > 0 && <details className="sources"><summary>Sources <span>{answer.sources.length}</span></summary>{answer.sources.map(source => <details className="source" key={source.source_id}><summary>{source.document_name}{source.page ? ` / Page ${source.page}` : ''} <span>[{source.source_id}]</span></summary><blockquote>{source.excerpt}</blockquote></details>)}</details>}<time className="answer-time">{timestamp(answer.created_at)}</time></div></div></article>
+function Section({
+  number,
+  title,
+  description,
+  children,
+}: {
+  number: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="form-section">
+      <div className="section-heading">
+        <span className="section-number">{number}</span>
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 export default function App() {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [selectedId, setSelectedId] = useState('')
-  const [file, setFile] = useState<File|null>(null)
-  const [progress, setProgress] = useState<number|null>(null)
-  const [question, setQuestion] = useState('')
-  const [answers, setAnswers] = useState<Answer[]>([])
-  const [history, setHistory] = useState<Answer[]>([])
-  const [view, setView] = useState<'workspace'|'history'>('workspace')
-  const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [moreHistory, setMoreHistory] = useState(false)
-  const [moreDocuments, setMoreDocuments] = useState(false)
-  const [dragging, setDragging] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const bottom = useRef<HTMLDivElement>(null)
-  useEffect(() => { bottom.current?.scrollIntoView?.({ behavior: 'smooth' }) }, [answers, busy, view])
-  const input = useRef<HTMLInputElement>(null)
-  const selected = documents.find(d => d.id === selectedId)
-  const activeAnswers = answers.filter(a => a.document_id === selectedId)
-
-  async function loadDocuments() {
-    setLoading(true)
-    try { const data = await api<Document[]>('/documents'); setDocuments(data); setMoreDocuments(data.length === 100); setSelectedId(current => current || data[0]?.id || '') }
-    catch (e) { setError(message(e)) } finally { setLoading(false) }
-  }
-  useEffect(() => { void loadDocuments() }, [])
-
-  // Sequential polling avoids overlapping sync operations; queued documents survive page reloads.
-  const pendingIds = documents.filter(d => ['uploaded', 'processing'].includes(d.ingestion_status)).map(d => d.id).join(',')
-  useEffect(() => {
-    if (!pendingIds) return
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout>
-    async function poll() {
-      try {
-        for (const id of pendingIds.split(',')) {
-          if (cancelled) return
-          const next = await api<Document>(`/documents/${encodeURIComponent(id)}/status`)
-          if (!cancelled) setDocuments(current => current.map(d => d.id === id ? next : d))
-        }
-      } catch (e) { if (!cancelled) setError(message(e)) }
-      if (!cancelled) timer = setTimeout(poll, 6000)
+  const [status, setStatus] = useState<Status | null>(null),
+    [jobs, setJobs] = useState<Job[]>([]),
+    [job, setJob] = useState<Job | null>(null);
+  const [repo, setRepo] = useState(""),
+    [branch, setBranch] = useState("aws_rag"),
+    [token, setToken] = useState(""),
+    [env, setEnv] = useState(""),
+    [envName, setEnvName] = useState("");
+  const [target, setTarget] = useState(initialTarget),
+    [publish, setPublish] = useState(true),
+    [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [tab, setTab] = useState<"overview" | "changes" | "checks" | "environment">(
+      "overview",
+    ),
+    [mobile, setMobile] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("cloudshift-sidebar") === "collapsed";
+    } catch {
+      return false;
     }
-    timer = setTimeout(poll, 2000)
-    return () => { cancelled = true; clearTimeout(timer) }
-  }, [pendingIds])
-
+  });
+  function toggleSidebar() {
+    setCollapsed((value) => {
+      try {
+        localStorage.setItem(
+          "cloudshift-sidebar",
+          value ? "expanded" : "collapsed",
+        );
+      } catch {
+        /* Preferences are optional. */
+      }
+      return !value;
+    });
+  }
+  const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const deleteDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    if (view !== 'history') return
-    let cancelled = false
-    setHistoryLoading(true)
-    api<Answer[]>('/questions/history?limit=50').then(data => {
-      if (!cancelled) { setHistory(data); setMoreHistory(data.length === 50) }
-    }).catch(e => { if (!cancelled) setError(message(e)) }).finally(() => { if (!cancelled) setHistoryLoading(false) })
-    return () => { cancelled = true }
-  }, [view])
+    if (deleteTarget) deleteDialog.current?.showModal();
+    else deleteDialog.current?.close();
+  }, [deleteTarget]);
+  async function removeJob() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await api(`/jobs/${deleteTarget.id}`, undefined, "DELETE");
+      setJobs((current) =>
+        current.filter((item) => item.id !== deleteTarget.id),
+      );
+      if (job?.id === deleteTarget.id) select(null);
+      setDeleteTarget(null);
+    } catch (e) {
+      setDeleteError(errors(e));
+    } finally {
+      setDeleting(false);
+    }
+  }
+  useEffect(() => {
+    Promise.all([api<Status>("/status"), api<Job[]>("/jobs")])
+      .then(([s, j]) => {
+        setStatus(s);
+        setJobs(j);
+        const id = window.location.hash.slice(1);
+        setJob(j.find((x) => x.id === id) || null);
+      })
+      .catch((e) => setError(errors(e)));
+  }, []);
+  useEffect(() => {
+    if (
+      !job ||
+      !["queued_inspection", "running", "queued"].includes(job.status)
+    )
+      return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const next = await api<Job>("/jobs/" + job.id);
+        if (!cancelled) {
+          setJob(next);
+          setJobs((current) =>
+            current.map((j) => (j.id === next.id ? next : j)),
+          );
+        }
+      } catch (e) {
+        if (!cancelled) setError(errors(e));
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 2000);
+      }
+    };
+    timer = setTimeout(poll, 1500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [job?.id, job?.status]);
+  function select(next: Job | null) {
+    setJob(next);
+    window.location.hash = next?.id || "";
+    setTarget({ ...initialTarget });
+    setAck(false);
+    setPublish(next?.publish_allowed ?? true);
+    setError("");
+    setMobile(false);
+    setTab("overview");
+  }
+  function update(
+    key: keyof typeof initialTarget,
+    value: string | number | boolean,
+  ) {
+    setTarget((t) => ({ ...t, [key]: value }));
+  }
+  const field = (
+    key: keyof typeof initialTarget,
+    label: string,
+    placeholder = "",
+    type = "text",
+    hint?: string,
+  ) => (
+    <Field label={label} hint={hint}>
+      <input
+        value={String(target[key])}
+        type={type}
+        placeholder={placeholder}
+        required={
+          ![
+            "db_wallet_dir",
+            "db_wallet_password",
+            "tenancy_id",
+            "user_id",
+            "fingerprint",
+          ].includes(key)
+        }
+        autoComplete="off"
+        onChange={(e) =>
+          update(
+            key,
+            type === "number" ? Number(e.target.value) : e.target.value,
+          )
+        }
+      />
+    </Field>
+  );
+  async function inspect(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const next = await api<Job>("/jobs", {
+        repository_url: repo,
+        source_branch: branch,
+        github_token: token,
+        aws_env: env,
+      });
+      setJobs((j) => [next, ...j]);
+      select(next);
+      setToken("");
+      setEnv("");
+      setEnvName("");
+    } catch (e) {
+      setError(errors(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function convert(e: FormEvent) {
+    e.preventDefault();
+    if (!job) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await api<Job>(`/jobs/${job.id}/convert`, {
+        target: {
+          ...target,
+        },
+        publish: publish && !!job.publish_allowed,
+        acknowledge_source_transfer: ack,
+      });
+      setJob(next);
+      setTarget({ ...initialTarget });
+      setTab("overview");
+    } catch (e) {
+      setError(errors(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function getDownload(kind: "configuration" | "source") {
+    if (!job) return;
+    try {
+      await download(job.id, kind);
+    } catch (e) {
+      setError(errors(e));
+    }
+  }
+  const active =
+    job && ["running", "queued", "queued_inspection"].includes(job.status);
 
-  function chooseFile(next?: File) {
-    if (!next) return
-    if (!/\.(pdf|txt|md)$/i.test(next.name)) { setError('Choose a PDF, TXT or Markdown file.'); return }
-    if (!next.size || next.size > 10 * 1024 * 1024) { setError('Choose a nonempty file up to 10 MB.'); return }
-    setFile(next); setError('')
-  }
-  async function handleUpload() {
-    if (!file) return
-    setError(''); setProgress(0)
-    try { const doc = await upload(file, setProgress); setDocuments(current => [doc, ...current]); setSelectedId(doc.id); setView('workspace'); setSidebarOpen(false); setFile(null); if (input.current) input.current.value = '' }
-    catch (e) { setError(message(e)) } finally { setProgress(null) }
-  }
-  async function ask(event: React.FormEvent) {
-    event.preventDefault()
-    if (!selected || selected.ingestion_status !== 'ready' || !question.trim() || busy) return
-    setBusy(true); setError('')
-    try { const answer = await api<Answer>('/questions/ask', { method: 'POST', body: JSON.stringify({ document_id: selected.id, question: question.trim() }) }); setAnswers(current => [...current, answer]); setQuestion('') }
-    catch (e) { setError(message(e)) } finally { setBusy(false) }
-  }
-  async function loadMoreHistory() {
-    setHistoryLoading(true)
-    try { const data = await api<Answer[]>(`/questions/history?limit=50&offset=${history.length}`); setHistory(current => [...current, ...data]); setMoreHistory(data.length === 50) }
-    catch (e) { setError(message(e)) } finally { setHistoryLoading(false) }
-  }
-
-  return <div className="app-shell">
-    {sidebarOpen && <button className="sidebar-overlay" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)}/>}
-    <aside className={`sidebar ${sidebarOpen ? 'is-open' : ''}`} aria-label="Documents and navigation">
-      <div className="brand-row"><a className="brand" href="/"><span className="brand-mark">a</span>aws_rag</a><button className="icon-button mobile-only" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}><Icon name="close"/></button></div>
-      <button className="upload-trigger" onClick={() => input.current?.click()} disabled={progress !== null}><Icon name="plus"/>Add document</button>
-      <input ref={input} aria-label="Choose document" type="file" accept=".pdf,.txt,.md" onChange={e => chooseFile(e.target.files?.[0])} disabled={progress !== null} hidden/>
-      <button className={`nav-item ${view === 'history' ? 'active' : ''}`} onClick={() => { setView('history'); setSidebarOpen(false) }}><Icon name="history"/>Question history</button>
-      <div className="library" onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (progress === null) chooseFile(e.dataTransfer.files[0]) }}>
-        <div className="list-heading"><span>Documents</span><button className="text-button" onClick={loadDocuments} disabled={loading}>Refresh</button></div>
-        {file && <div className="pending-file"><strong>{file.name}</strong><button className="primary" onClick={handleUpload} disabled={progress !== null}>{progress === null ? 'Upload document' : progress < 100 ? `Uploading ${progress}%` : 'Preparing...'}</button>{progress !== null && <progress aria-label="Upload progress" value={progress} max={100}/>}</div>}
-        {dragging && <div className="drop-hint">Drop your document here</div>}
-        {loading && <p className="sidebar-empty" role="status">Loading documents...</p>}
-        {!loading && !documents.length && <p className="sidebar-empty">No documents yet.<br/>Add a file to get started.</p>}
-        <div className="document-list">{documents.map(doc => <button key={doc.id} title={doc.original_filename} className={`document ${selectedId === doc.id && view === 'workspace' ? 'selected' : ''}`} onClick={() => { setSelectedId(doc.id); setView('workspace'); setSidebarOpen(false) }} aria-pressed={selectedId === doc.id && view === 'workspace'}><Icon name="file"/><span className="document-meta"><strong>{doc.original_filename}</strong>{doc.ingestion_status !== 'ready' && <span className={`status ${doc.ingestion_status}`}>{labels[doc.ingestion_status]}</span>}</span></button>)}</div>
-        {moreDocuments && <button className="text-button load-more" onClick={async () => { try { const data = await api<Document[]>(`/documents?offset=${documents.length}`); setDocuments(current => [...current, ...data]); setMoreDocuments(data.length === 100) } catch (e) { setError(message(e)) } }}>Load more documents</button>}
-      </div><div className="sidebar-footer">PDF, TXT, Markdown<span>Up to 10 MB per file</span></div>
-    </aside>
-    <main className="main"><header className="topbar"><button className="icon-button mobile-only" aria-label="Open navigation" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Icon name="menu"/></button><span className="header-title">{view === 'history' ? 'Question history' : selected?.original_filename || 'Your workspace'}</span>{view === 'workspace' && selected && <span className={`header-status ${selected.ingestion_status}`}><i/>{labels[selected.ingestion_status]}</span>}</header>
-      {error && <div className="error" role="alert"><span>{error}</span><button className="icon-button" aria-label="Dismiss error" onClick={() => setError('')}><Icon name="close"/></button></div>}
-      {view === 'workspace' ? <><div className="conversation-scroll"><section className={`conversation ${activeAnswers.length ? '' : 'empty-conversation'}`} aria-label="Conversation">
-        {selected && selected.ingestion_status !== 'ready' && <div className="indexing-notice" role="status">{selected.status_message}</div>}
-        {activeAnswers.length ? activeAnswers.map(answer => <AnswerCard key={answer.id} answer={answer}/>) : <div className="chat-empty"><span className="welcome-mark" aria-hidden="true">a</span><h1>{selected ? 'What would you like to know?' : 'A little clarity starts here.'}</h1><p>{selected ? 'Ask a question about your document.' : 'Add a document. Ask a question. Find your answer.'}</p>{selected ? <div className="suggestions">{['Summarize the main points', 'What are the key takeaways?'].map(q => <button key={q} disabled={selected.ingestion_status !== 'ready'} onClick={() => { setQuestion(q); document.getElementById('question')?.focus() }}>{q}</button>)}</div> : <button className="welcome-upload" onClick={() => { setSidebarOpen(true); input.current?.click() }}><Icon name="plus"/>Add your first document</button>}</div>}
-        {busy && <div className="thinking" role="status"><span className="thinking-dot"/>Reading your document...</div>}<div ref={bottom}/>
-      </section></div><div className="composer-area"><form className="composer" onSubmit={ask}><label className="sr-only" htmlFor="question">Your question</label><textarea id="question" placeholder={selected?.ingestion_status === 'ready' ? 'Ask about your document...' : selected?.ingestion_status === 'failed' ? 'Select another document to continue...' : selected ? 'Your document is being prepared...' : 'Add a document to get started...'} value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }} maxLength={4000} disabled={busy || selected?.ingestion_status !== 'ready'} rows={2}/><div className="composer-actions"><span>{selected ? 'Using selected document' : 'PDF, TXT or Markdown'}{question.length > 3500 ? ` / ${question.length}/4000` : ''}</span><button className="send-button" type="submit" disabled={busy || !question.trim() || selected?.ingestion_status !== 'ready'} aria-label="Ask question"><Icon name="arrow"/></button></div></form><p className="composer-note">Answers can be imperfect. Check the sources.</p></div></> : <div className="history-scroll"><section className="history"><h1>Your past questions</h1><p className="history-intro">Answers and sources, saved in one place.</p>{!historyLoading && !history.length && <div className="history-empty"><Icon name="history"/><p>No questions yet.</p><button className="text-button" onClick={() => setView('workspace')}>Back to workspace</button></div>}{history.map(answer => <div key={answer.id} className="history-item"><p className="history-document">{documents.find(d => d.id === answer.document_id)?.original_filename || 'Document'}</p><AnswerCard answer={answer}/></div>)}{historyLoading && <p role="status">Loading history...</p>}{moreHistory && <button className="primary" disabled={historyLoading} onClick={loadMoreHistory}>Load more</button>}</section></div>}
-    </main>
-  </div>
+  return (
+    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      <dialog
+        ref={deleteDialog}
+        className="delete-dialog"
+        aria-labelledby="delete-title"
+        aria-describedby="delete-description"
+        onCancel={(e) => {
+          e.preventDefault();
+          if (!deleting) setDeleteTarget(null);
+        }}
+      >
+        <h2 id="delete-title">Delete this conversion?</h2>
+        <p className="delete-name">
+          {deleteTarget?.repository_url.split("/").pop()} {"\u00b7"}{" "}
+          {deleteTarget && shortDate(deleteTarget.created_at)}
+        </p>
+        <p id="delete-description">
+          This removes its local history, downloads, and saved credentials.
+          Published GitHub branches and cloud resources are kept. This cannot be
+          undone.
+        </p>
+        {deleteError && (
+          <p className="error" role="alert">
+            {deleteError}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button
+            className="secondary"
+            autoFocus
+            disabled={deleting}
+            onClick={() => setDeleteTarget(null)}
+          >
+            Keep conversion
+          </button>
+          <button className="primary" disabled={deleting} onClick={removeJob}>
+            {deleting ? "Deleting..." : "Delete conversion"}
+          </button>
+        </div>
+      </dialog>
+      {mobile && (
+        <button
+          className="scrim"
+          aria-label="Close menu"
+          onClick={() => setMobile(false)}
+        />
+      )}
+      <aside
+        id="workspace-sidebar"
+        className={`sidebar ${mobile ? "open" : ""}`}
+      >
+        <button
+          className="sidebar-toggle"
+          onClick={toggleSidebar}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          aria-controls="workspace-sidebar"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <Icon name="panel" />
+        </button>
+        <a
+          href="#"
+          className="brand"
+          aria-label="Cloudshift home"
+          title="Cloudshift home"
+          onClick={(e) => {
+            e.preventDefault();
+            select(null);
+          }}
+        >
+          <span className="brand-symbol">
+            <Icon name="code" />
+          </span>
+          <span>
+            Cloudshift<small>AWS TO OCI</small>
+          </span>
+        </a>
+        <button
+          className="new-conversion"
+          aria-label="New conversion"
+          title="New conversion"
+          onClick={() => select(null)}
+        >
+          <Icon name="plus" />
+          <span>New conversion</span>
+        </button>
+        <div className="sidebar-label">RECENT CONVERSIONS</div>
+        <nav aria-label="Recent conversions">
+          {jobs.length ? (
+            jobs.map((j) => (
+              <div
+                key={j.id}
+                className={`job-row ${job?.id === j.id ? "selected" : ""}`}
+              >
+                <button
+                  className="job-link"
+                  onClick={() => select(j)}
+                  title={`${j.repository_url.split("/").pop()} - ${names[j.status] || j.status} - ${shortDate(j.created_at)}`}
+                  aria-label={`${j.repository_url.split("/").pop()} - ${names[j.status] || j.status} - ${shortDate(j.created_at)}`}
+                  aria-current={job?.id === j.id ? "page" : undefined}
+                >
+                  <span className={`rail-job-icon ${j.status}`}>
+                    <Icon name="file" />
+                  </span>
+                  <span className="job-info">
+                    <strong title={j.repository_url}>
+                      {j.repository_url.split("/").pop()}
+                    </strong>
+                    <small className="job-state">
+                      <i className={`dot ${j.status}`} />
+                      {names[j.status] || j.status}
+                    </small>
+                    <small className="job-date">
+                      {j.source_branch || "History"} {"\u00b7"}{" "}
+                      {shortDate(j.created_at)}
+                    </small>
+                  </span>
+                </button>
+                {deletable(j.status) && (
+                  <button
+                    className="delete-job"
+                    title="Delete conversion"
+                    aria-label={`Delete conversion ${j.repository_url.split("/").pop()} from ${shortDate(j.created_at)}`}
+                    onClick={() => {
+                      setDeleteError("");
+                      setDeleteTarget(j);
+                    }}
+                  >
+                    <Icon name="trash" />
+                  </button>
+                )}
+              </div>
+            ))
+          ) : (
+            <p className="empty-list">Your conversions will appear here.</p>
+          )}
+        </nav>
+        <div
+          className="sidebar-bottom"
+          title={
+            status?.astra_configured
+              ? "OCI configured"
+              : "OCI not configured"
+          }
+        >
+          <span
+            className={`connection-dot ${status?.astra_configured ? "connected" : ""}`}
+          />
+          <div>
+            OCI
+            <small>
+              {status?.astra_configured
+                ? "Configured - Live Access Unverified"
+                : "Waiting for endpoint details"}
+            </small>
+          </div>
+        </div>
+      </aside>
+      <main>
+        <header className="topbar">
+          <button
+            className="mobile-menu"
+            aria-label="Open menu"
+            onClick={() => setMobile(true)}
+          >
+            <Icon name="code" />
+          </button>
+        </header>
+        <div className="page">
+          {error && (
+            <div role="alert" className="error">
+              <span>{error}</span>
+              <button aria-label="Dismiss error" onClick={() => setError("")}>
+                <Icon name="close" />
+              </button>
+            </div>
+          )}
+          {!job ? (
+            <>
+              <div className="page-heading">
+                <div className="eyebrow">SAME APPLICATION. A NEW CLOUD.</div>
+                <h1>Make the move to OCI.</h1>
+                <p>
+                  Bring your AWS RAG repository. Keep your core logic.
+                  <br />
+                  Get an OCI branch with every change explained.
+                </p>
+              </div>
+              <div className="migration-strip">
+                <span className="cloud-badge aws">aws</span>
+                <span className="migration-line" />
+                <span className="migration-caption">
+                  Your code, carried forward
+                </span>
+                <Icon name="arrow" />
+                <span className="cloud-badge oci">OCI</span>
+              </div>
+              <form onSubmit={inspect} className="source-form">
+                <Section
+                  number="01"
+                  title="Start with your repository"
+                  description="We'll inspect a snapshot of your selected branch."
+                >
+                  <Field label="GitHub repository">
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://github.com/your-team/aws_rag"
+                      value={repo}
+                      onChange={(e) => setRepo(e.target.value)}
+                    />
+                  </Field>
+                  <div className="field-grid">
+                    <Field label="Source branch">
+                      <input
+                        required
+                        value={branch}
+                        onChange={(e) => setBranch(e.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label="GitHub access token"
+                      hint="Fine-grained token: this repository, Contents read and write."
+                    >
+                      <input
+                        type="password"
+                        required
+                        autoComplete="off"
+                        value={token}
+                        placeholder="Your repository access token"
+                        onChange={(e) => setToken(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <label className="file-drop">
+                    <span className="upload-symbol">
+                      <Icon name="file" />
+                    </span>
+                    <span>
+                      <strong>{envName || "Add your AWS .env file"}</strong>
+                      <small>
+                        Optional. AWS secrets are discarded; resource settings
+                        are read.
+                      </small>
+                    </span>
+                    <span className="browse">Browse</span>
+                    <input
+                      type="file"
+                      aria-label="AWS environment file"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          if (f.size > 65536) {
+                            setError(
+                              "Use an environment file smaller than 64 KB.",
+                            );
+                            return;
+                          }
+                          setEnv(await f.text());
+                          setEnvName(f.name);
+                        }
+                      }}
+                    />
+                  </label>
+                </Section>
+                <div className="form-footer">
+                  <span>Designed for the aws_rag project</span>
+                  <button className="primary" disabled={busy}>
+                    {busy ? "Starting inspection..." : "Inspect repository"}
+                    <Icon name="arrow" />
+                  </button>
+                </div>
+              </form>
+              <div className="principles">
+                <span>
+                  <Icon name="check" />
+                  Core logic preserved
+                </span>
+                <span>
+                  <Icon name="check" />
+                  New branch in your repository
+                </span>
+                <span>
+                  <Icon name="check" />
+                  Changes you can review
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="job-heading">
+                <div>
+                  <div className="eyebrow">
+                    {job.source_branch}{" "}
+                    {job.source_sha && ` / ${job.source_sha.slice(0, 8)}`}
+                  </div>
+                  <h1>{job.repository_url.split("/").pop()}</h1>
+                  <p>{job.phase}</p>
+                </div>
+                <span className={`status-pill ${job.status}`}>
+                  {names[job.status] || job.status}
+                </span>
+              </div>
+              {job.status === "ready" ? (
+                <form onSubmit={convert}>
+                  <div className="inline-note">
+                    <Icon name="check" />
+                    <span>
+                      Source inspected. Your RAG workflow, UI, prompts, and
+                      question-answering flow stay intact. Persistence moves to
+                      Autonomous Database.
+                    </span>
+                  </div>
+                  <Section
+                    number="02"
+                    title="Connect your OCI components"
+                    description="Use existing resources. The converter won't create or deploy cloud infrastructure."
+                  >
+                    <div className="field-grid">
+                      {field("region", "OCI region", "us-chicago-1")}
+                      {field(
+                        "compartment_id",
+                        "Compartment OCID",
+                        "ocid1.compartment...",
+                      )}
+                      {field(
+                        "namespace",
+                        "Object Storage namespace",
+                        "your-namespace",
+                      )}
+                      {field(
+                        "bucket",
+                        "Object Storage bucket",
+                        "rag-documents",
+                      )}
+                      {field("object_prefix", "Object prefix", "documents/")}
+                    </div>
+                  </Section>
+                  <Section
+                    number="03"
+                    title="Choose the answer model"
+                    description="This model answers document questions in your converted RAG application."
+                  >
+                    <div className="field-grid">
+                      {field(
+                        "llm_model_id",
+                        "LLM model or endpoint ID",
+                        "Model ID or dedicated endpoint OCID",
+                      )}
+                      <Field label="LLM API format">
+                        <select
+                          value={target.llm_format}
+                          onChange={(e) => update("llm_format", e.target.value)}
+                        >
+                          <option value="generic">OCI native - Generic</option>
+                          <option value="generic_astra">
+                            OCI native - Generic (Astra)
+                          </option>
+                          <option value="cohere">OCI native - Cohere</option>
+                          <option value="responses">OCI - Responses API</option>
+                          <option value="chat_completions">
+                            OCI - Chat Completions
+                          </option>
+                        </select>
+                      </Field>
+                      {field(
+                        "llm_endpoint",
+                        "LLM service endpoint",
+                        "https://inference.generativeai...oci.oraclecloud.com",
+                        "url",
+                        "For Responses / Chat Completions, include the API base path.",
+                      )}
+                      <Field label="LLM serving mode">
+                        <select
+                          value={target.llm_serving_mode}
+                          onChange={(e) =>
+                            update("llm_serving_mode", e.target.value)
+                          }
+                        >
+                          <option value="on_demand">On demand</option>
+                          <option value="dedicated">Dedicated endpoint</option>
+                        </select>
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section
+                    number="04"
+                    title="Choose the embedding model"
+                    description="Independent of the answer model. Embeddings are stored in Autonomous Database with AI Vector Search."
+                  >
+                    <div className="field-grid">
+                      {field(
+                        "embedding_model_id",
+                        "Embedding model or endpoint ID",
+                        "Your OCI embedding model",
+                      )}
+                      {field(
+                        "embedding_endpoint",
+                        "Embedding service endpoint",
+                        "https://inference.generativeai...oci.oraclecloud.com",
+                        "url",
+                        "Native OCI EmbedText endpoint; supports retrieval input types.",
+                      )}
+                      {field(
+                        "embedding_dimensions",
+                        "Vector dimensions",
+                        "1024",
+                        "number",
+                      )}
+                      <Field label="Embedding serving mode">
+                        <select
+                          value={target.embedding_serving_mode}
+                          onChange={(e) =>
+                            update("embedding_serving_mode", e.target.value)
+                          }
+                        >
+                          <option value="on_demand">On demand</option>
+                          <option value="dedicated">Dedicated endpoint</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <details className="advanced">
+                      <summary>Chunking and model options</summary>
+                      <div className="field-grid">
+                        {field(
+                          "chunk_chars",
+                          "Characters per chunk",
+                          "1800",
+                          "number",
+                        )}
+                        {field(
+                          "chunk_overlap",
+                          "Overlap in characters",
+                          "200",
+                          "number",
+                        )}
+                      </div>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={target.embedding_set_dimensions}
+                          onChange={(e) =>
+                            update("embedding_set_dimensions", e.target.checked)
+                          }
+                        />
+                        Request output dimensions from the model (only if
+                        supported)
+                      </label>
+                      <p>
+                        Different chunks and wording from AWS are expected.
+                        Sources and factual grounding matter.
+                      </p>
+                    </details>
+                  </Section>
+                  <Section
+                    number="05"
+                    title="Database and runtime credentials"
+                    description="These values go into a private download, never the generated Git branch."
+                  >
+                    <p>
+                      Autonomous AI Database Serverless stores document
+                      metadata, chat history, and vectors.
+                    </p>
+                    {field(
+                      "db_dsn",
+                      "Database connection string (DSN)",
+                      "tcps://your-host:1521/your-service",
+                      "text",
+                      "Copy the TLS connection string from OCI Database connection. For mTLS, use your wallet's TNS alias.",
+                    )}
+                    <div className="field-grid">
+                      {field("db_user", "Database username", "RAG_APP")}
+                      {field(
+                        "db_password",
+                        "Database password",
+                        "",
+                        "password",
+                      )}
+                    </div>
+                    <details className="advanced">
+                      <summary>Database wallet (optional)</summary>
+                      {field(
+                        "db_wallet_dir",
+                        "Wallet directory on runtime machine",
+                        "config/wallet",
+                        "text",
+                        "For mTLS, extract your wallet here on the machine running the converted app. Wallet files are not uploaded or committed.",
+                      )}
+                      {field(
+                        "db_wallet_password",
+                        "Wallet password (optional)",
+                        "",
+                        "password",
+                      )}
+                    </details>
+                    <details className="advanced">
+                      <summary>OCI signing credentials</summary>
+                      {field("oci_profile", "OCI profile", "DEFAULT")}
+                      <p>
+                        Use an existing OCI profile on the machine running the
+                        generated project, or include signing credentials below.
+                      </p>
+                      <div className="field-grid">
+                        {field("tenancy_id", "Tenancy OCID")}
+                        {field("user_id", "User OCID")}
+                        {field("fingerprint", "Public key fingerprint")}
+                      </div>
+                      <Field label="Private signing key (optional)">
+                        <textarea
+                          value={target.private_key}
+                          onChange={(e) =>
+                            update("private_key", e.target.value)
+                          }
+                          placeholder="PEM private key - included only in your Private ENV Configuration download"
+                          rows={3}
+                        />
+                      </Field>
+                    </details>
+                  </Section>
+                  <div className="conversion-options">
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={publish && !!job.publish_allowed}
+                        disabled={!job.publish_allowed}
+                        onChange={(e) => setPublish(e.target.checked)}
+                      />
+                      Push the validated result to a new branch in this
+                      repository
+                    </label>
+                    {!job.publish_allowed && (
+                      <p>
+                        Automatic branch workflows were detected. Download-only
+                        conversion is available.
+                      </p>
+                    )}
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={ack}
+                        onChange={(e) => setAck(e.target.checked)}
+                      />
+                      Send the relevant source code to my configured OCI Astra
+                      model for conversion.
+                    </label>
+                  </div>
+                  {!status?.astra_configured && (
+                    <div className="setup-note">
+                      OCI Astra is not connected yet. Add its endpoint and
+                      credentials to the converter configuration, then restart
+                      the backend.
+                    </div>
+                  )}
+                  <div className="form-footer">
+                    <span>
+                      Astra converts code. Your selected models power the RAG
+                      app.
+                    </span>
+                    <button
+                      className="primary"
+                      disabled={busy || !status?.astra_configured || !ack}
+                    >
+                      CONVERT TO OCI
+                      <Icon name="arrow" />
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div
+                    className="tabs"
+                    role="tablist"
+                    aria-label="Conversion results"
+                  >
+                    {(
+                      ["overview", "changes", "checks", "environment"] as const
+                    ).map((t) => (
+                      <button
+                        key={t}
+                        role="tab"
+                        aria-selected={tab === t}
+                        className={tab === t ? "active" : ""}
+                        onClick={() => setTab(t)}
+                      >
+                        {t === "overview"
+                          ? "Overview"
+                          : t === "changes"
+                            ? `Code changes${job.files.length ? " / " + job.files.length : ""}`
+                            : t === "checks"
+                              ? "Validation"
+                              : "Environment"}
+                      </button>
+                    ))}
+                  </div>
+                  {tab === "overview" && (
+                    <div className="overview-grid">
+                      <div className="overview-summary">
+                        <div className="result-card">
+                          {active ? (
+                            <>
+                              <div className="working-mark">
+                                <Icon name="code" />
+                              </div>
+                              <h2>
+                                {job.cancel_requested
+                                  ? "Cancelling at the next safe point..."
+                                  : "Working in the background"}
+                              </h2>
+                              <p>
+                                You can return to this job after refreshing the
+                                page.
+                              </p>
+                            </>
+                          ) : job.status === "completed" ? (
+                            <>
+                              <span className="success-mark">
+                                <Icon name="check" />
+                              </span>
+                              <h2>Your OCI project is ready to review.</h2>
+                              <p>
+                                Offline validation passed. Live OCI access and
+                                answer quality are still unverified.
+                              </p>
+                              <div className="result-actions">
+                                {job.branch_url && (
+                                  <a
+                                    className="primary"
+                                    href={job.branch_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Open OCI branch
+                                    <Icon name="arrow" />
+                                  </a>
+                                )}
+                                <button
+                                  className="secondary"
+                                  onClick={() => getDownload("source")}
+                                >
+                                  Download code
+                                </button>
+                                <button
+                                  className="secondary"
+                                  onClick={() => getDownload("configuration")}
+                                >
+                                  Private ENV Configuration
+                                </button>
+                              </div>
+                              {job.compare_url && (
+                                <a
+                                  className="text-link"
+                                  href={job.compare_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Compare with the source commit
+                                </a>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <h2>
+                                {job.status === "failed"
+                                  ? "Conversion needs attention."
+                                  : names[job.status]}
+                              </h2>
+                              <p>{job.phase}</p>
+                              <button
+                                className="secondary"
+                                onClick={() => select(null)}
+                              >
+                                Start a new conversion
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        {job.status === "completed" && (
+                          <div className="component-map">
+                            <h2>What moved</h2>
+                            <div>
+                              <span>
+                                <Icon name="storage" />
+                                S3
+                              </span>
+                              <Icon name="arrow" />
+                              <strong>
+                                <Icon name="storage" />
+                                OCI Object Storage
+                              </strong>
+                            </div>
+                            <div>
+                              <span>
+                                <Icon name="model" />
+                                Bedrock answer model
+                              </span>
+                              <Icon name="arrow" />
+                              <strong>
+                                <Icon name="model" />
+                                Your OCI LLM
+                              </strong>
+                            </div>
+                            <div>
+                              <span>
+                                <Icon name="search" />
+                                Bedrock Knowledge Base
+                              </span>
+                              <Icon name="arrow" />
+                              <strong>
+                                <Icon name="search" />
+                                Oracle AI Vector Search
+                              </strong>
+                            </div>
+                            <div>
+                              <span>
+                                <Icon name="database" />
+                                PostgreSQL history
+                              </span>
+                              <Icon name="arrow" />
+                              <strong>
+                                <Icon name="database" />
+                                Autonomous Database history
+                              </strong>
+                            </div>
+                          </div>
+                        )}
+                        {job.metrics && (
+                          <div className="metrics">
+                            <div>
+                              <strong>{job.metrics.modified}</strong>
+                              <span>Existing files changed</span>
+                            </div>
+                            <div>
+                              <strong>{job.metrics.added}</strong>
+                              <span>Files added</span>
+                            </div>
+                            <div>
+                              <strong>{job.metrics.core_unchanged}</strong>
+                              <span>Core files preserved</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <section
+                        className="activity"
+                        aria-label="Conversion activity"
+                      >
+                        <div className="activity-heading">
+                          <h2>Conversion activity</h2>
+                          <span
+                            className={`activity-label ${active ? "live" : ""}`}
+                          >
+                            {active ? "Live" : `${job.events.length} events`}
+                          </span>
+                        </div>
+                        <p className="activity-caption">
+                          {active
+                            ? "Following your conversion"
+                            : "From AWS source to OCI code"}
+                        </p>
+                        <ol
+                          className="event-list"
+                          aria-live="polite"
+                          aria-relevant="additions text"
+                        >
+                          {job.events.map((event, i) => {
+                            const label = activityLabel(event.message);
+                            return (
+                              <li
+                                className={`event ${i === job.events.length - 1 ? `latest ${job.status}` : ""}`}
+                                key={i}
+                              >
+                                <span className="event-marker">
+                                  {i === job.events.length - 1 &&
+                                  job.status === "completed" ? (
+                                    <Icon name="check" />
+                                  ) : i === job.events.length - 1 &&
+                                    job.status === "failed" ? (
+                                    "!"
+                                  ) : (
+                                    <span />
+                                  )}
+                                </span>
+                                <div className="event-content">
+                                  <span className="event-title">
+                                    {label.title}
+                                  </span>
+                                  {label.description && (
+                                    <p className="event-description">
+                                      {label.description}
+                                    </p>
+                                  )}
+                                  <time
+                                    dateTime={new Date(
+                                      event.time * 1000,
+                                    ).toISOString()}
+                                  >
+                                    {shortDate(event.time)}
+                                  </time>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                        {!job.events.length && (
+                          <p className="activity-caption">
+                            Events will appear when processing starts.
+                          </p>
+                        )}
+                        {active && (
+                          <button
+                            className="text-link cancel"
+                            disabled={job.cancel_requested}
+                            onClick={() =>
+                              api<Job>(`/jobs/${job.id}/cancel`, {})
+                                .then(setJob)
+                                .catch((e) => setError(errors(e)))
+                            }
+                          >
+                            Cancel conversion
+                          </button>
+                        )}
+                      </section>
+                    </div>
+                  )}
+                  {tab === "changes" && (
+                    <CodeChanges
+                      key={job.id}
+                      files={job.files}
+                      compareUrl={job.compare_url}
+                    />
+                  )}
+                  {tab === "environment" && (
+                    <Environment
+                      key={job.id}
+                      jobId={job.id}
+                      status={job.status}
+                    />
+                  )}
+                  {tab === "checks" && (
+                    <div className="checks-panel">
+                      {job.checks.map((c) => (
+                        <div className="check-row" key={c.name}>
+                          <span>{c.name}</span>
+                          <span className={`check-status ${c.status}`}>
+                            {c.status.replace("_", " ")}
+                          </span>
+                        </div>
+                      ))}
+                      {job.validation_log && (
+                        <details className="test-log">
+                          <summary>Build and test output</summary>
+                          <pre>{job.validation_log}</pre>
+                        </details>
+                      )}
+                      <p>
+                        Live OCI testing is separate. Matching AWS answers word
+                        for word is not required.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          <footer>
+            Cloudshift <span>Configuration first. Core logic intact.</span>
+          </footer>
+        </div>
+      </main>
+    </div>
+  );
 }

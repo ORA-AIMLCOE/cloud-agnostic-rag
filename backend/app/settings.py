@@ -1,0 +1,47 @@
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
+    astra_base_url: str = ""
+    astra_model_id: str = ""
+    astra_api_format: Literal["oci_generic", "responses", "chat_completions"] = "oci_generic"
+    astra_auth_mode: Literal["api_key", "oci_profile"] = "oci_profile"
+    astra_api_key: str = ""
+    astra_compartment_id: str = ""
+    astra_oci_config_file: str = "~/.oci/config"
+    astra_oci_profile: str = "DEFAULT"
+    astra_verbosity: Literal["LOW", "MEDIUM", "HIGH"] = "MEDIUM"
+    astra_max_output_tokens: int = Field(default=24000, ge=1000, le=64000)
+    astra_max_attempts: int = Field(default=2, ge=1, le=3)
+    validator_image: str = "aws-oci-validator:oracle-v1"
+    job_retention_hours: int = Field(default=24, ge=1, le=168)
+    state_dir: Path = ROOT / ".state"
+    workspace_dir: Path = ROOT / ".workspaces"
+
+    @property
+    def astra_configured(self):
+        if self.astra_api_format == "oci_generic":
+            return bool(
+                self.astra_base_url
+                and self.astra_model_id
+                and self.astra_compartment_id
+                and self.astra_auth_mode == "oci_profile"
+            )
+        return bool(
+            self.astra_base_url
+            and self.astra_model_id
+            and (self.astra_auth_mode == "oci_profile" or self.astra_api_key)
+        )
+
+
+@lru_cache
+def settings():
+    return Settings()
