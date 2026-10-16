@@ -33,6 +33,9 @@ For frontend development, use a second terminal in `frontend` and run `npm run d
 Keep the backend on port 8011. These ports are separate from the existing AWS RAG app.
 Run one backend process with one worker; do not use multiple uvicorn workers or auto-reload during jobs.
 
+For a shared HTTPS deployment, see [Remote access](docs/remote-access.md).
+The backend stays on loopback and the reverse proxy must authenticate all requests.
+
 ## Before the first conversion
 
 1. Start your Docker-compatible Linux container engine (Docker Desktop or Rancher Desktop with dockerd).

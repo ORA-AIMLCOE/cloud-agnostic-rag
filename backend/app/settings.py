@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -10,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
+    cloudshift_public_origin: str = ""
     astra_base_url: str = ""
     astra_model_id: str = ""
     astra_api_format: Literal["oci_generic", "responses", "chat_completions"] = "oci_generic"
@@ -25,6 +27,20 @@ class Settings(BaseSettings):
     job_retention_hours: int = Field(default=24, ge=1, le=168)
     state_dir: Path = ROOT / ".state"
     workspace_dir: Path = ROOT / ".workspaces"
+
+    @field_validator("cloudshift_public_origin")
+    @classmethod
+    def validate_public_origin(cls, value):
+        value = value.strip().rstrip("/")
+        if not value:
+            return ""
+        parsed = urlsplit(value)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+                or parsed.path or parsed.query or parsed.fragment or "*" in value
+                or any(char.isspace() for char in value)):
+            raise ValueError("Use an exact HTTPS origin behind an authenticated reverse proxy.")
+        _ = parsed.port  # Validate an explicit port number.
+        return value
 
     @property
     def astra_configured(self):

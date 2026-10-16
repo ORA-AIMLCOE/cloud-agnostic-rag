@@ -2,6 +2,7 @@ import io
 import shutil
 import zipfile
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -20,6 +21,12 @@ ORIGINS = {"http://127.0.0.1:5175", "http://localhost:5175", "http://127.0.0.1:8
 
 def create_app(config=None, start_worker=True):
     config = config or settings()
+    origins = set(ORIGINS)
+    allowed_hosts = ["localhost", "127.0.0.1", "testserver"]
+    if config.cloudshift_public_origin:
+        # TLS and authentication are enforced by the reverse proxy. Keep uvicorn on loopback.
+        origins.add(config.cloudshift_public_origin)
+        allowed_hosts.append(urlsplit(config.cloudshift_public_origin).hostname)
     store = Store(config.state_dir)
     worker = Worker(store, config)
 
@@ -32,13 +39,13 @@ def create_app(config=None, start_worker=True):
 
     app = FastAPI(title="AWS to OCI Converter", lifespan=lifespan)
     app.state.store, app.state.worker = store, worker
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     @app.middleware("http")
     async def local_requests(request, call_next):
         if request.url.path.startswith("/api/"):
             origin = request.headers.get("origin")
-            if (origin and origin not in ORIGINS) or request.headers.get("x-converter-request") != "1":
+            if (origin and origin not in origins) or request.headers.get("x-converter-request") != "1":
                 return JSONResponse({"error": "Open the converter from its local UI."}, status_code=403)
             if int(request.headers.get("content-length", "0")) > 256000:
                 return JSONResponse({"error": "Request exceeds the upload limit."}, status_code=413)
@@ -70,7 +77,7 @@ def create_app(config=None, start_worker=True):
             "astra_model": config.astra_model_id,
             "astra_provider": "OCI",
             "retention_hours": config.job_retention_hours,
-            "scope": "local_single_user",
+            "scope": "shared_workspace" if config.cloudshift_public_origin else "local_single_user",
         }
 
     @app.post("/api/jobs", status_code=202)
