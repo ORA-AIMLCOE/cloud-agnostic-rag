@@ -2,6 +2,7 @@ import io
 import shutil
 import zipfile
 from contextlib import asynccontextmanager
+from secrets import token_urlsafe
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
@@ -80,8 +81,27 @@ def create_app(config=None, start_worker=True):
             "scope": "shared_workspace" if config.cloudshift_public_origin else "local_single_user",
         }
 
+    @app.get("/api/target-defaults")
+    def target_defaults():
+        # Public deployments require the authenticated proxy; backend stays on loopback.
+        # All authenticated workspace users may retrieve these explicitly configured defaults.
+        # The API middleware enforces request guards and Cache-Control: no-store.
+        return {
+            "db_password": config.cloudshift_default_db_password.get_secret_value(),
+            "db_wallet_password": config.cloudshift_default_wallet_password.get_secret_value(),
+            "repository_url": config.cloudshift_default_repository_url,
+            "github_token_configured": bool(config.cloudshift_default_github_token.get_secret_value()),
+        }
+
     @app.post("/api/jobs", status_code=202)
     def inspect(body: InspectRequest):
+        github_token = body.github_token.get_secret_value()
+        if not github_token:
+            saved_repo = config.cloudshift_default_repository_url.strip().rstrip("/").removesuffix(".git")
+            if saved_repo.lower() == body.repository_url.lower():
+                github_token = config.cloudshift_default_github_token.get_secret_value()
+            if not github_token:
+                raise SafeError("Enter a GitHub access token for this repository.")
         aws, ignored = parse_aws_env(body.aws_env)
         identifier = store.create(
             {
@@ -90,7 +110,7 @@ def create_app(config=None, start_worker=True):
                 "aws_components": aws,
                 "ignored_env_values": ignored,
             },
-            {"github_token": body.github_token.get_secret_value()},
+            {"github_token": github_token},
         )
         return store.get(identifier)
 
@@ -119,6 +139,9 @@ def create_app(config=None, start_worker=True):
                 )
             payload = store.secrets(identifier)
             payload.update(target=reveal_target(body.target), publish=body.publish)
+            if current.get("analysis", {}).get("integration_api"):
+                # A distinct runtime key per conversion; never inherit the AWS application's key.
+                payload["target"].update(distributor_mode=True, integration_api_key=token_urlsafe(32))
             env_text(payload["target"])  # Validate serialization before queueing.
             store.queue_conversion(identifier, payload)
             return store.get(identifier)
@@ -159,7 +182,8 @@ def create_app(config=None, start_worker=True):
             # Mask before serialization. The browser never receives these secrets.
             preview = dict(target)
             for key, variable in (("db_password", "OCI_DB_PASSWORD"),
-                                  ("db_wallet_password", "OCI_DB_WALLET_PASSWORD")):
+                                  ("db_wallet_password", "OCI_DB_WALLET_PASSWORD"),
+                                  ("integration_api_key", "INTEGRATION_API_KEYS")):
                 if preview.get(key):
                     preview[key] = "[REDACTED]"
                     masked.append(variable)

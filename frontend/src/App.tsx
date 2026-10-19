@@ -12,22 +12,22 @@ import { Environment } from "./Environment";
 import { activityLabel } from "./activity";
 
 const initialTarget = {
-  region: "us-chicago-1",
+  region: "ap-hyderabad-1",
   compartment_id:
-    "ocid1.compartment.oc1..aaaaaaaadg4huvdmy2wyjt2lkg5pl4wmi2gxabxwtckbzyoz7pjggidoau2a",
-  namespace: "ax4qsxvnsmtm",
-  bucket: "cloud-agnostic-rag-documents",
+    "ocid1.compartment.oc1..aaaaaaaa3qvv265xribdtfsiykr3haigqnyrokay6civ2e6rijweihtagdna",
+  namespace: "axq9kf4jgjxz",
+  bucket: "cloudshift-rag-documents",
   object_prefix: "documents/",
   llm_model_id:
-    "ocid1.generativeaimodel.oc1.us-chicago-1.amaaaaaask7dceyajj2zycru477p4okhx36wzbrhvfhka47vjqvrbcgpiapq",
+    "ocid1.generativeaimodel.oc1.ap-hyderabad-1.amaaaaaask7dceya5vgh63kn7duemcsc7hhitvnduml4ivx5k3hjqdevrpfa",
   llm_endpoint:
-    "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
-  llm_format: "generic_astra",
+    "https://inference.generativeai.ap-hyderabad-1.oci.oraclecloud.com",
+  llm_format: "generic",
   llm_serving_mode: "on_demand",
   embedding_model_id:
-    "ocid1.generativeaimodel.oc1.us-chicago-1.amaaaaaask7dceya6a7ddhqkyimvl3olp3wmllmbedfsghe633fn2e63kicq",
+    "cohere.embed-v4.0",
   embedding_endpoint:
-    "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+    "https://inference.generativeai.ap-hyderabad-1.oci.oraclecloud.com",
   embedding_serving_mode: "on_demand",
   embedding_dimensions: 1536,
   embedding_set_dimensions: false,
@@ -35,9 +35,8 @@ const initialTarget = {
   chunk_overlap: 200,
   db_user: "AWSOCI_RAG",
   db_password: "",
-  db_dsn: "aimlcoesandbox_low",
-  db_wallet_dir:
-    "C:\\Users\\adarshmi\\Desktop\\EXPLORE\\0_internal_projects\\aws_vs_oci\\oci_wallets\\Wallet_AIMLCOESANDBOX",
+  db_dsn: "cloudshiftrag_low",
+  db_wallet_dir: "/home/ubuntu/oci_wallets/Wallet_CLOUDSHIFTRAG",
   db_wallet_password: "",
   oci_profile: "DEFAULT",
   tenancy_id: "",
@@ -109,6 +108,9 @@ function Section({
 }
 
 export default function App() {
+  const defaults = useRef(initialTarget);
+  const repositoryDefault = useRef("");
+  const [githubTokenConfigured, setGithubTokenConfigured] = useState(false);
   const [status, setStatus] = useState<Status | null>(null),
     [jobs, setJobs] = useState<Job[]>([]),
     [job, setJob] = useState<Job | null>(null);
@@ -172,8 +174,21 @@ export default function App() {
     }
   }
   useEffect(() => {
-    Promise.all([api<Status>("/status"), api<Job[]>("/jobs")])
-      .then(([s, j]) => {
+    Promise.all([
+      api<Status>("/status"),
+      api<Job[]>("/jobs"),
+      api<Pick<typeof initialTarget, "db_password" | "db_wallet_password"> & { repository_url?: string; github_token_configured?: boolean }>("/target-defaults"),
+    ])
+      .then(([s, j, privateDefaults]) => {
+        defaults.current = {
+          ...initialTarget,
+          db_password: privateDefaults.db_password ?? "",
+          db_wallet_password: privateDefaults.db_wallet_password ?? "",
+        };
+        repositoryDefault.current = privateDefaults.repository_url ?? "";
+        setGithubTokenConfigured(privateDefaults.github_token_configured ?? false);
+        setRepo(current => current || repositoryDefault.current);
+        setTarget({ ...defaults.current });
         setStatus(s);
         setJobs(j);
         const id = window.location.hash.slice(1);
@@ -210,10 +225,18 @@ export default function App() {
       clearTimeout(timer);
     };
   }, [job?.id, job?.status]);
+  const normalizeRepository = (value: string) =>
+    value.trim().replace(/\/$/, "").replace(/\.git$/, "").toLowerCase();
+  const hasSavedGithubToken = githubTokenConfigured &&
+    normalizeRepository(repo) === normalizeRepository(repositoryDefault.current);
   function select(next: Job | null) {
+    if (!next) {
+      setRepo(repositoryDefault.current);
+      setToken("");
+    }
     setJob(next);
     window.location.hash = next?.id || "";
-    setTarget({ ...initialTarget });
+    setTarget({ ...defaults.current });
     setAck(false);
     setPublish(next?.publish_allowed ?? true);
     setError("");
@@ -293,7 +316,7 @@ export default function App() {
         acknowledge_source_transfer: ack,
       });
       setJob(next);
-      setTarget({ ...initialTarget });
+      setTarget({ ...defaults.current });
       setTab("overview");
     } catch (e) {
       setError(errors(e));
@@ -451,26 +474,6 @@ export default function App() {
             <p className="empty-list">Your conversions will appear here.</p>
           )}
         </nav>
-        <div
-          className="sidebar-bottom"
-          title={
-            status?.astra_configured
-              ? "OCI configured"
-              : "OCI not configured"
-          }
-        >
-          <span
-            className={`connection-dot ${status?.astra_configured ? "connected" : ""}`}
-          />
-          <div>
-            OCI
-            <small>
-              {status?.astra_configured
-                ? "Configured - Live Access Unverified"
-                : "Waiting for endpoint details"}
-            </small>
-          </div>
-        </div>
       </aside>
       <main>
         <header className="topbar">
@@ -497,7 +500,7 @@ export default function App() {
                 <div className="eyebrow">SAME APPLICATION. A NEW CLOUD.</div>
                 <h1>Make the move to OCI.</h1>
                 <p>
-                  Bring your AWS RAG repository. Keep your core logic.
+                  Bring your repository. Keep your core logic.
                   <br />
                   Get an OCI branch with every change explained.
                 </p>
@@ -536,14 +539,14 @@ export default function App() {
                     </Field>
                     <Field
                       label="GitHub access token"
-                      hint="Fine-grained token: this repository, Contents read and write."
+                      hint={hasSavedGithubToken ? "A saved token is available for this repository. Leave blank to use it, or enter another token." : "Fine-grained token: this repository, Contents read and write."}
                     >
                       <input
                         type="password"
-                        required
+                        required={!hasSavedGithubToken}
                         autoComplete="off"
                         value={token}
-                        placeholder="Your repository access token"
+                        placeholder={hasSavedGithubToken ? "Saved token on server" : "Your repository access token"}
                         onChange={(e) => setToken(e.target.value)}
                       />
                     </Field>
@@ -580,7 +583,6 @@ export default function App() {
                   </label>
                 </Section>
                 <div className="form-footer">
-                  <span>Designed for the aws_rag project</span>
                   <button className="primary" disabled={busy}>
                     {busy ? "Starting inspection..." : "Inspect repository"}
                     <Icon name="arrow" />
@@ -622,9 +624,9 @@ export default function App() {
                   <div className="inline-note">
                     <Icon name="check" />
                     <span>
-                      Source inspected. Your RAG workflow, UI, prompts, and
-                      question-answering flow stay intact. Persistence moves to
-                      Autonomous Database.
+                      {job.analysis?.prepared_knowledge
+                        ? "Distributor Aggregator detected. Its prepared document workflow, comparisons, UI and integration API stay intact. Persistence moves to Autonomous Database."
+                        : "Source inspected. Your RAG workflow, UI, prompts, and question-answering flow stay intact. Persistence moves to Autonomous Database."}
                     </span>
                   </div>
                   <Section
@@ -633,7 +635,7 @@ export default function App() {
                     description="Use existing resources. The converter won't create or deploy cloud infrastructure."
                   >
                     <div className="field-grid">
-                      {field("region", "OCI region", "us-chicago-1")}
+                      {field("region", "OCI region", "ap-hyderabad-1")}
                       {field(
                         "compartment_id",
                         "Compartment OCID",
@@ -938,6 +940,13 @@ export default function App() {
                                 Offline validation passed. Live OCI access and
                                 answer quality are still unverified.
                               </p>
+                              {job.analysis?.prepared_knowledge && (
+                                <p>
+                                  Follow docs/oci-generated.md to initialize Oracle and ingest the distributor
+                                  document before starting the app. The new integration API key is included
+                                  only in Private ENV Configuration.
+                                </p>
+                              )}
                               <div className="result-actions">
                                 {job.branch_url && (
                                   <a

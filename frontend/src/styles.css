@@ -412,6 +412,7 @@ main {
   padding: 24px 0;
 }
 .source-form .form-footer {
+  justify-content: flex-end;
   padding: 19px 30px;
   background: #f7f2eb;
   border-top: 1px solid var(--line);

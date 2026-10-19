@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,6 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
     cloudshift_public_origin: str = ""
+    # Shared UI defaults supplied only through the protected, non-cached API.
+    cloudshift_default_db_password: SecretStr = SecretStr("")
+    cloudshift_default_wallet_password: SecretStr = SecretStr("")
+    cloudshift_default_repository_url: str = ""
+    # Used only on the server for the configured repository; never returned by the API.
+    cloudshift_default_github_token: SecretStr = SecretStr("")
     astra_base_url: str = ""
     astra_model_id: str = ""
     astra_api_format: Literal["oci_generic", "responses", "chat_completions"] = "oci_generic"

@@ -23,7 +23,7 @@ export type Job = {
   files: Change[];
   events: { time: number; message: string }[];
   checks: { name: string; status: string }[];
-  analysis?: { components: string[]; protected_files: number };
+  analysis?: { components: string[]; protected_files: number; application?: string; prepared_knowledge?: boolean; integration_api?: boolean };
   metrics?: { modified: number; added: number; core_unchanged: number };
   validation_log?: string;
   cancel_requested?: boolean;

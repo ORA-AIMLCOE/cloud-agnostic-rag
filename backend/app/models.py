@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 class InspectRequest(BaseModel):
     repository_url: str
     source_branch: str = "aws_rag"
-    github_token: SecretStr
+    github_token: SecretStr = SecretStr("")
     aws_env: str = Field(default="", max_length=65536)
 
     @field_validator("repository_url")

@@ -34,6 +34,16 @@ REQUIRED = [
     "frontend/package-lock.json",
 ]
 
+DISTRIBUTOR_REQUIRED = (
+    "backend/app/admin.py",
+    "backend/app/services/knowledge.py",
+    "backend/app/services/distributors.py",
+    "backend/app/api/integration.py",
+    "backend/app/interfaces/repository.py",
+    "backend/app/domain/models.py",
+    "docs/Distributor_Knowledge_Base_DEMO.md",
+)
+
 
 def inspect_source(files):
     missing = [name for name in REQUIRED if name not in files]
@@ -49,8 +59,23 @@ def inspect_source(files):
     package = json.loads(files["frontend/package.json"])
     if "react" not in package.get("dependencies", {}):
         raise SafeError("Unsupported frontend structure.")
+    distributor = any(p in files for p in DISTRIBUTOR_REQUIRED[:4])
+    if distributor:
+        absent = [p for p in DISTRIBUTOR_REQUIRED if p not in files]
+        if absent:
+            raise SafeError("Incomplete Distributor Aggregator source. Missing: " + ", ".join(absent))
+        contract = files["backend/app/interfaces/repository.py"].decode()
+        for method in ("get_release_by_hash", "register_release", "get_active_release", "activate_release"):
+            if f"def {method}(" not in contract:
+                raise SafeError("Distributor release repository contract is incomplete: " + method)
+        for name in ("KnowledgeReleaseRow", "ActiveKnowledgeRow"):
+            if f"class {name}(" not in files["backend/app/database/models.py"].decode():
+                raise SafeError("Distributor knowledge schema is incomplete: " + name)
     return {
         "recipe": "aws_rag_v1",
+        "application": "distributor_aggregator" if distributor else "document_rag",
+        "prepared_knowledge": distributor,
+        "integration_api": distributor,
         "components": [
             "S3 object storage",
             "Bedrock generation",
@@ -71,12 +96,14 @@ def replace_once(text, before, after):
 
 
 def generate_recipe(files):
-    inspect_source(files)
+    analysis = inspect_source(files)
     changes = {
         p.relative_to(RECIPE / "templates").as_posix(): p.read_text(encoding="utf-8")
         for p in (RECIPE / "templates").rglob("*")
         if p.is_file() and "__pycache__" not in p.parts
     }
+    if not analysis["prepared_knowledge"]:
+        changes.pop("backend/tests/test_distributor_oci_generated.py", None)
     path = "backend/app/providers/factory.py"
     text = files[path].decode().replace("\r\n", "\n")
     before = """        raise NotImplementedError(
@@ -141,7 +168,7 @@ def generate_recipe(files):
     )
     # Only the former unimplemented-provider expectation changes; all AWS behavior tests remain.
     changes["backend/requirements-oci.lock.txt"] = (RECIPE / "oci-dependencies.lock.txt").read_text()
-    changes[".env.oci.example"] = env_text({}, placeholders=True)
+    changes[".env.oci.example"] = env_text({"distributor_mode": analysis["prepared_knowledge"]}, placeholders=True)
     changes[".gitignore"] = (
         files.get(".gitignore", b"").decode() + "\n# OCI runtime credentials\n.env\nconfig/oci/\n*.pem\nconfig/wallet/\nWallet*.zip\n*.p12\n*.sso\n"
     )
@@ -167,6 +194,13 @@ def model_context(files, changes, target, failure=""):
     }
     return {
         "task": "Review and minimally adapt the OCI recipe for this project's provider contracts.",
+        "application_contract": (
+            "Distributor Aggregator uses a pre-ingested, versioned active document. Preserve its admin CLI, "
+            "release activation/rollback, demo metadata, source-filtered retrieval, comparison queries, UI, "
+            "history and Bearer-authenticated POST /api/v1/answers. Oracle copies include knowledge_releases "
+            "and active_knowledge. Do not introduce uploads in the UI or migrate source credentials/data."
+            if "backend/app/services/knowledge.py" in files else "Preserve the document upload and Q&A workflow."
+        ),
         "source_interfaces": sources,
         "allowed_files": sorted(EDITABLE),
         "implementation": {p: s for p, s in changes.items() if p.startswith("backend/app/providers/oci/")},
@@ -219,6 +253,14 @@ def env_values(target, placeholders=False):
         else "~/.oci/config",
         "OCI_PROFILE": value("oci_profile", "DEFAULT"),
     }
+    if target.get("distributor_mode"):
+        key = "" if placeholders else str(target.get("integration_api_key", ""))
+        values.update({
+            "DISTRIBUTOR_MODE": "true",
+            "INTEGRATION_API_KEYS": json.dumps({"cloudshift-client": key} if key else {}),
+            "INTEGRATION_REQUESTS_PER_MINUTE": "30",
+            "INTEGRATION_MAX_CONCURRENT": "2",
+        })
     return values
 
 

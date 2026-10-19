@@ -103,3 +103,48 @@ repository test uses SQLite only to exercise serialization/contracts; it is not 
 The recipe was generated from the trusted local AWS checkout; no Astra call or GitHub publication was
 performed during this change. Live checks are available through scripts/check_oci_database.py and the
 opt-in OCI_RUN_DB_TESTS=1 generated test after the target application schema is initialized.
+
+
+## Distributor Aggregator compatibility - 19 October 2026
+
+Validated against aws_rag commit 7e06be006e06e9466fc1630556e77a8a9ddcde2e.
+
+- Converter backend: 103 tests passed, including source feature detection, incomplete-contract rejection,
+  per-conversion integration key generation, encrypted persistence, masked preview and private download.
+- Converter frontend: 14 tests passed; TypeScript and production build passed.
+- Deterministic generated application: 80 backend tests passed, four optional live tests skipped.
+  Added Oracle repository release activation/rollback and pre-ingestion/API/isolation contract checks.
+- The real Docker sandbox (aws-oci-validator:oracle-v1) passed the generated backend suite, TypeScript,
+  frontend build and all six source UI tests, with network disabled and no runtime credentials mounted.
+- 26 generated file changes; zero protected source changes. The latest distributor UI cleanup, admin
+  ingestion workflow, comparison retrieval and authenticated integration API remain unchanged.
+- Target credentials and the generated integration key are excluded from model context, source templates
+  and Git output. Source integration keys are discarded during environment import.
+- Updated generated runtime instructions for Oracle initialization, CLI pre-ingestion and API clients.
+
+These checks establish offline compatibility, not current live model permissions or OCI resource access.
+No converter commit was pushed, no OCI branch was published and no VM deployment was performed for this update.
+The OCI SDK successfully loaded the laptop's DEFAULT profile and found its signing key. A small live
+request to the configured Chicago conversion model passed authentication and JSON response parsing.
+The profile's region is Hyderabad; the converter explicitly uses its separately configured Chicago endpoint.
+
+With explicit user approval, the configured Chicago model reviewed only source provider interfaces
+and generated OCI adapter files. It returned no changes. The reviewed adapters matched the
+Docker-tested output, and live development summaries validated for all 13 OCI adapter files.
+This did not exercise a GitHub-backed UI job or connect the generated app to live target resources.
+
+## Local conversion summary fix - 19 October 2026
+
+A generated offline test used a literal dummy integration key in a Python keyword argument.
+The credential scanner treated that line as a malformed dotenv assignment and correctly stopped
+before sending the diff, after the application tests had passed. The fixture now generates an
+ephemeral key at runtime. Credential scanning was not relaxed. Regression tests cover the actual
+generated fixture's summary request and continued blocking of real integration-key assignments.
+
+Converter backend: 105 tests passed. A replacement UI/API job using the failed job's saved target
+and publish setting passed Docker validation (80 backend tests, four live tests skipped; six UI
+tests and frontend build passed). GPT summaries completed for all 26 changed files. Job
+6a1e1a9e1b434f6788dc39d048528ecf published migration/oci-6a1e1a9e1b43 at
+8450d855965cbd20a05fc336e88cee61931365c5; the remote branch reference was independently verified.
+No VM deployment or live target-resource verification was performed. The earlier failed job is
+retained as history; the replacement job contains the validated output and private configuration.

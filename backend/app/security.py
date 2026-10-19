@@ -63,6 +63,20 @@ def has_secret(text):
         text,
     ):
         return True
+    integration_keys = re.findall(r"(?im)^\s*INTEGRATION_API_KEYS\s*=\s*([^\r\n]+)", text)
+    for raw in integration_keys:
+        import json
+        try:
+            entries = json.loads(raw.strip().strip("'"))
+        except (ValueError, TypeError):
+            return True
+        if not isinstance(entries, dict):
+            return True
+        for key in entries.values():
+            if not isinstance(key, str) or (key and not any(
+                marker in key.lower() for marker in ("<", "$" + "{", "replace", "example", "your_")
+            )):
+                return True
     # Known assignments and credential-bearing URLs. Template/default development values are allowed.
     # Terraform's RDS password-management switch is a boolean, not a password.
     assignment_text = re.sub(

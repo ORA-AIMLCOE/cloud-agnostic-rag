@@ -82,6 +82,22 @@ Model access and permissions require live verification with your details. No pub
 These settings select the conversion model; the generated RAG app's answer and embedding models are
 configured independently in the UI.
 
+## Distributor Aggregator source
+
+The recipe supports the updated aws_rag branch with prepared distributor knowledge and a Bearer-authenticated
+integration API. Start a new inspection to pin the latest source commit; existing jobs keep their old snapshots.
+The source UI, API routes, prompts, comparison retrieval, admin CLI and history stay unchanged.
+Oracle persistence copies include knowledge_releases and active_knowledge so activation and rollback work.
+
+After conversion, follow the generated docs/oci-generated.md: initialize Oracle, ingest the bundled distributor
+document with the preserved admin CLI, then start the app. No AWS database tunnel or AWS login is needed for
+the OCI runtime. Source documents/history are not automatically migrated.
+
+Each new distributor conversion gets a fresh integration key in Private ENV Configuration. The public
+template contains an empty key map, and the Environment preview masks the private key. A consuming project
+calls POST /api/v1/answers with that key after the generated application is deployed. Conversion itself does
+not deploy a public endpoint or automatically ingest live data.
+
 ## How conversion works
 
 - Pin the selected branch to a source commit and download its GitHub archive.

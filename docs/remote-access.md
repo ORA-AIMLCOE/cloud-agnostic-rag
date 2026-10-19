@@ -30,3 +30,22 @@ The cloudshift-cert-renew.timer renews certificates and reloads cloudshift-proxy
 The dedicated proxy uses /etc/nginx/cloudshift-nginx.conf and cloudshift-proxy.service;
 it does not enable or reload the pre-existing nginx.service or Docker proxy.
 Keep OCI ingress restricted to required ports; port 8011 must stay private.
+
+
+### Shared password autofill
+
+The conversion form defaults to the Hyderabad Cloudshift RAG resources.
+Set `CLOUDSHIFT_DEFAULT_DB_PASSWORD` and `CLOUDSHIFT_DEFAULT_WALLET_PASSWORD`
+in the private root `.env` and restart Cloudshift to autofill password inputs.
+Every user authenticated to the shared workspace can retrieve these passwords.
+The defaults are sent through `/api/target-defaults` with `Cache-Control: no-store`;
+they are not included in frontend assets, status responses, or browser storage.
+Keep the backend on loopback behind the authenticated HTTPS proxy.
+
+The target OCI profile must be installed on the generated application's runtime
+machine and belong to the target tenancy. Converter code-review credentials are
+configured separately and are not replaced by changing these form defaults.
+
+## Saved GitHub token
+
+Set CLOUDSHIFT_DEFAULT_REPOSITORY_URL and CLOUDSHIFT_DEFAULT_GITHUB_TOKEN in the VM private .env. The repository URL autofills; the token field shows Saved token on server. Leaving the field blank uses the saved token only for that repository. Entering a token overrides it. All authenticated workspace users can use this credential to inspect and publish conversions; the API returns only a configured flag, never the saved token. Restart cloudshift after changing these values. Keep the .env readable only by its service owner.

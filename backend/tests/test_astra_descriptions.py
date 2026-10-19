@@ -59,3 +59,22 @@ def test_empty_report_needs_no_model_call(monkeypatch):
     astra, request = model(monkeypatch, {"files": []})
     assert astra.describe_changes([]) == ({}, {})
     request.assert_not_called()
+
+
+def test_generated_distributor_fixture_passes_summary_credential_scan(monkeypatch):
+    from app.recipe import RECIPE
+    content = (RECIPE / "templates/backend/tests/test_distributor_oci_generated.py").read_text(encoding="utf-8")
+    path = "backend/tests/test_distributor_oci_generated.py"
+    report = [{"path": path, "kind": "added", "diff": "\n".join("+" + line for line in content.splitlines())}]
+    astra, request = model(monkeypatch, {"files": [{"path": path, "description": "Added offline distributor API and Oracle repository contract checks."}]})
+    descriptions, _ = astra.describe_changes(report)
+    assert path in descriptions
+    request.assert_called_once()
+
+
+def test_runtime_integration_key_still_blocks_summaries(monkeypatch):
+    astra, request = model(monkeypatch, {"files": []})
+    report = [{"path": ".env", "kind": "added", "diff": '+INTEGRATION_API_KEYS={"client":"private-runtime-key"}'}]
+    with pytest.raises(SafeError, match="credentials"):
+        astra.describe_changes(report)
+    request.assert_not_called()

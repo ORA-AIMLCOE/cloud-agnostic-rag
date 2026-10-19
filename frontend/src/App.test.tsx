@@ -50,7 +50,8 @@ test("inspects repository and keeps conversion blocked until Astra is configured
         : ([] as any),
   );
   render(<App />);
-  await screen.findByText("Waiting for endpoint details");
+  await waitFor(() => expect(api).toHaveBeenCalledWith("/target-defaults"));
+  expect(screen.queryByText("Waiting for endpoint details")).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("GitHub repository"), {
     target: { value: "https://github.com/team/aws_rag" },
   });
@@ -103,6 +104,7 @@ test("shows actual file diffs and separates live verification", async () => {
     ...job,
     status: "completed",
     phase: "Code validated",
+    analysis: { components: [], protected_files: 50, prepared_knowledge: true, integration_api: true },
     files: [
       {
         path: "backend/app/providers/oci/llm.py",
@@ -121,6 +123,7 @@ test("shows actual file diffs and separates live verification", async () => {
   );
   render(<App />);
   await screen.findByText("Your OCI project is ready to review.");
+  expect(screen.getByText(/initialize Oracle and ingest the distributor/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: /Code changes/ }));
   expect(screen.getByText("new")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Validation" }));
@@ -249,4 +252,75 @@ test("environment tab loads the saved redacted preview", async () => {
     screen.queryByLabelText("Load AWS .env for comparison"),
   ).not.toBeInTheDocument();
   expect(screen.queryByText("Use saved settings")).not.toBeInTheDocument();
+});
+
+
+test("loads private defaults into masked fields and restores them for a new selection", async () => {
+  window.location.hash = "abc";
+  vi.mocked(api).mockImplementation(async (path) => {
+    if (path === "/status")
+      return { astra_configured: true, astra_model: "model", retention_hours: 24 } as any;
+    if (path === "/target-defaults")
+      return { db_password: "test-db-secret", db_wallet_password: "test-wallet-secret" } as any;
+    return [job] as any;
+  });
+  render(<App />);
+  await screen.findByText("Connect your OCI components");
+  expect(screen.getByLabelText("Database password")).toHaveValue("test-db-secret");
+  expect(screen.getByLabelText("Database password")).toHaveAttribute("type", "password");
+  expect(screen.getByLabelText("Wallet password (optional)")).toHaveValue("test-wallet-secret");
+  expect(screen.getByLabelText("Wallet password (optional)")).toHaveAttribute("type", "password");
+  expect(screen.getByLabelText("LLM API format")).toHaveValue("generic");
+  fireEvent.change(screen.getByLabelText("Database password"), {
+    target: { value: "edited-password" },
+  });
+  expect(screen.getByLabelText("Database password")).toHaveValue("edited-password");
+  fireEvent.click(screen.getByRole("button", { name: /New conversion/i }));
+  fireEvent.click(screen.getByRole("button", { name: /aws_rag - Ready to configure/i }));
+  expect(screen.getByLabelText("Database password")).toHaveValue("test-db-secret");
+  expect(JSON.stringify(window.localStorage)).not.toContain("test-db-secret");
+});
+
+test("autofills the configured repository and restores it for a new conversion", async () => {
+  vi.mocked(api).mockImplementation(async (path) => {
+    if (path === "/status") return { astra_configured: true } as any;
+    if (path === "/target-defaults") return { repository_url: "https://github.com/team/repo" } as any;
+    return [] as any;
+  });
+  render(<App />);
+  const repository = screen.getByLabelText("GitHub repository");
+  await waitFor(() => expect(repository).toHaveValue("https://github.com/team/repo"));
+  fireEvent.change(repository, { target: { value: "https://github.com/team/other" } });
+  expect(repository).toHaveValue("https://github.com/team/other");
+  fireEvent.click(screen.getByRole("button", { name: /New conversion/i }));
+  expect(repository).toHaveValue("https://github.com/team/repo");
+});
+
+test("uses the saved server token only for its configured GitHub repository", async () => {
+  vi.mocked(api).mockImplementation(async (path, body) => {
+    if (path === "/status") return { astra_configured: true } as any;
+    if (path === "/target-defaults") return {
+      repository_url: "https://github.com/team/repo", github_token_configured: true,
+    } as any;
+    return body ? job : [] as any;
+  });
+  render(<App />);
+  const repository = screen.getByLabelText("GitHub repository");
+  const token = screen.getByLabelText(/GitHub access token/);
+  await waitFor(() => expect(repository).toHaveValue("https://github.com/team/repo"));
+  expect(token).toHaveValue("");
+  expect(token).toHaveAttribute("placeholder", "Saved token on server");
+  expect(token).not.toBeRequired();
+  fireEvent.change(repository, { target: { value: "https://github.com/team/other" } });
+  expect(token).toBeRequired();
+  fireEvent.click(screen.getByRole("button", { name: /New conversion/i }));
+  expect(repository).toHaveValue("https://github.com/team/repo");
+  expect(token).not.toBeRequired();
+  fireEvent.click(screen.getByRole("button", { name: /Inspect repository/ }));
+  await screen.findByText("Connect your OCI components");
+  expect(api).toHaveBeenCalledWith("/jobs", expect.objectContaining({
+    repository_url: "https://github.com/team/repo", github_token: "",
+  }));
+  fireEvent.click(screen.getByRole("button", { name: /New conversion/i }));
+  expect(screen.getByLabelText(/GitHub access token/)).not.toBeRequired();
 });
