@@ -1,6 +1,6 @@
-# AWS RAG on the shared OCI VM
+# Distributor Aggregator on the shared OCI VM
 
-URL: **https://150.230.130.251:8081/aws-rag/**, behind the existing Cloudshift
+URL: **https://150.230.130.251:8081/aws-app/**, behind the existing Cloudshift
 HTTPS login. All users with that login share documents and question history.
 The application still uses AWS account 649901308226 in Sydney: S3, Bedrock Nova
 Lite, the managed Knowledge Base, and private RDS PostgreSQL. Hosting on OCI
@@ -46,8 +46,8 @@ Unattended operation requires a separately designed renewable workload identity.
 
 ## Updates
 
-Build with `npm run build -- --base=/aws-rag/` and copy frontend/dist contents
-into /var/www/aws-rag. API and upload URLs use Vite's base path, while normal
+Build with `npm run build -- --base=/aws-app/` and copy frontend/dist contents
+into /var/www/aws-app. API and upload URLs use Vite's base path, while normal
 local development continues to use /. The Nginx locations in
 scripts/deployment/aws-rag.nginx.locations are included inside the existing
 authenticated server. After changing the proxy:
@@ -59,7 +59,7 @@ sudo systemctl reload cloudshift-proxy
 
 Do not replace the shared proxy configuration or change the colleague's port
 8080. No new public port is required. Verify the authenticated
-/aws-rag/api/readiness endpoint after any update.
+/aws-app/api/readiness endpoint after any update.
 
 ## Deployment verification
 
@@ -72,3 +72,10 @@ prefix-scoped object access, which passed. Backend tests: 51 passed, 3 optional
 integration tests skipped. Frontend tests: 5 passed; production build passed.
 Both AWS RAG service units are enabled for boot; no VM reboot was performed.
 Two Q&A verification entries were added to the existing history.
+
+## Source branch and public routes - 19 October 2026
+
+Deploy source from the aws_app branch. The public UI is /aws-app/ and machine clients POST to
+/aws-app/api/v1/answers with an integration Bearer key. The old /aws-rag/ URLs redirect with
+HTTP 308 to preserve request methods. Existing service names and the private installation path
+remain unchanged. Browser access continues to use the shared HTTPS login.

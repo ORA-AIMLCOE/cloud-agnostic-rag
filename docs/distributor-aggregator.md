@@ -73,7 +73,7 @@ Content-Type: application/json
 {"question":"Compare BlueDart and Delhivery COD limits and settlement times."}
 ```
 
-This localhost address works only from this laptop. The remote HTTPS URL will be configured in the later VM deployment.
+This localhost address works only from this laptop. The VM integration endpoint is https://150.230.130.251:8081/aws-app/api/v1/answers.
 
 The local test key is stored in `.validation/distributor-api-key.txt`, and configured through the ignored `.env` file. It is not part of the frontend bundle or Git. From the project directory:
 
@@ -110,15 +110,15 @@ INTEGRATION_MAX_CONCURRENT=2
 
 Restart the backend after changing keys. Give each integration its own entry. Rotate by adding a new entry, updating the caller, then removing the old one. Limits apply to the integration route per process; run one worker or use a shared rate-limit gateway when scaling. Local browser routes use the existing local/shared-workspace access model, so keep the local server bound to loopback.
 
-## Later VM deployment
+## VM deployment
 
-1. Deploy this tested `aws_rag` version separately from Cloudshift; preserve the colleague's app and existing paths.
+1. Deploy the tested `aws_app` branch separately from Cloudshift; preserve the colleague's app and existing paths.
 2. Apply the additive database migration and private environment configuration, then run a persistent service with working AWS credentials.
-3. Serve the UI at the existing `/aws-rag/` prefix under HTTPS and the existing browser login.
+3. Serve the UI at the existing `/aws-app/` prefix under HTTPS and the existing browser login.
 4. Expose only the exact integration endpoint under HTTPS with application Bearer authentication. Configure that proxy location to pass the Authorization header and avoid a conflicting browser Basic-auth challenge. Keep all other UI/history routes behind the browser login.
 5. Test authentication, source citations, timeouts and key rotation from the consuming project's backend, then provide that project the final URL and its own key through a private channel.
 
-No VM deployment or OCI conversion is included in this local implementation.
+The VM hosts this AWS application under /aws-app/. Hosting it on OCI does not convert its AWS providers.
 
 ## Five demo questions
 
