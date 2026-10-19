@@ -43,6 +43,15 @@ class StoredObject(BaseModel):
     reference: str
 
 
+class KnowledgeRelease(TimestampedModel):
+    model_config = ConfigDict(from_attributes=True)
+    document_id: str
+    content_sha256: str
+    version: str
+    demo_data: bool = False
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class SearchChunk(BaseModel):
     source_id: str
     document_id: str

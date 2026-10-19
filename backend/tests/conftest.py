@@ -46,7 +46,7 @@ def providers():
 
 @pytest.fixture
 def container(repository, providers):
-    return build_container(Settings(_env_file=None), providers, repository)
+    return build_container(Settings(_env_file=None, distributor_mode=False), providers, repository)
 
 
 @pytest.fixture

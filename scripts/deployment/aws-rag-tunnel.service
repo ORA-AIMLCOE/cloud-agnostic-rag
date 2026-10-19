@@ -1,0 +1,22 @@
+[Unit]
+Description=AWS RAG private RDS tunnel through Session Manager
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=AWS_PAGER=
+WorkingDirectory=/home/ubuntu/apps/aws-rag
+ExecStart=/home/ubuntu/.local/bin/aws ssm start-session --profile aws-rag-provision --region ap-southeast-2 --target i-0bed6e1f2728db3fd --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters file:///home/ubuntu/apps/aws-rag/scripts/deployment/db-tunnel.json
+Restart=always
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

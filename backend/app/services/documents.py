@@ -52,9 +52,9 @@ class DocumentService:
         self.storage, self.ingestion, self.vector, self.repository = storage, ingestion, vector, repository
         self.prefix, self.max_bytes, self.timeout_seconds = prefix, max_bytes, timeout_seconds
 
-    def upload(self, filename: str, content: bytes) -> Document:
+    def upload(self, filename: str, content: bytes, document_id: str | None = None) -> Document:
         filename, content_type = validate_document(filename, content, self.max_bytes)
-        identifier = str(uuid4())
+        identifier = document_id or str(uuid4())
         document = Document(
             id=identifier,
             original_filename=filename,

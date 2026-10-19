@@ -8,7 +8,7 @@ from app.domain.models import Status
 
 class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    document_id: Annotated[str, StringConstraints(min_length=1, max_length=36)]
+    document_id: Annotated[str, StringConstraints(min_length=1, max_length=36)] | None = None
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
 
 

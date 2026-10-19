@@ -1,0 +1,25 @@
+[Unit]
+Description=AWS RAG application
+Wants=network-online.target aws-rag-tunnel.service
+After=network-online.target aws-rag-tunnel.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=AWS_CONFIG_FILE=/home/ubuntu/.aws/config
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/home/ubuntu/apps/aws-rag/backend
+ExecStartPre=/home/ubuntu/apps/aws-rag/.venv/bin/python /home/ubuntu/apps/aws-rag/scripts/deployment/wait_database.py
+ExecStartPre=/home/ubuntu/apps/aws-rag/.venv/bin/alembic upgrade head
+ExecStart=/home/ubuntu/apps/aws-rag/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8012 --no-access-log
+Restart=always
+RestartSec=15
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

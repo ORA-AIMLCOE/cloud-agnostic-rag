@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -38,3 +38,18 @@ class QuestionAnswerRow(Base):
 class IngestionLockRow(Base):
     __tablename__ = "ingestion_locks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
+class KnowledgeReleaseRow(Base):
+    __tablename__ = "knowledge_releases"
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="RESTRICT"), primary_key=True)
+    content_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    version: Mapped[str] = mapped_column(String(100))
+    demo_data: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ActiveKnowledgeRow(Base):
+    __tablename__ = "active_knowledge"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("knowledge_releases.document_id", ondelete="RESTRICT"))

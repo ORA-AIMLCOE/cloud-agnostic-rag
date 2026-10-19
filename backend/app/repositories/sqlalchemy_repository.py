@@ -4,9 +4,15 @@ from threading import RLock
 from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
 
-from app.database.models import DocumentRow, IngestionLockRow, QuestionAnswerRow
+from app.database.models import (
+    ActiveKnowledgeRow,
+    DocumentRow,
+    IngestionLockRow,
+    KnowledgeReleaseRow,
+    QuestionAnswerRow,
+)
 from app.domain.errors import AppError
-from app.domain.models import Document, QuestionAnswer, Status, utcnow
+from app.domain.models import Document, KnowledgeRelease, QuestionAnswer, Status, utcnow
 
 
 class SQLAlchemyRepository:
@@ -56,6 +62,35 @@ class SQLAlchemyRepository:
         with self.sessions.begin() as session:
             session.add(QuestionAnswerRow(**data, source_references=[s.model_dump() for s in answer.sources]))
         return answer
+
+    def get_release_by_hash(self, digest: str) -> KnowledgeRelease | None:
+        with self.sessions() as session:
+            row = session.scalar(select(KnowledgeReleaseRow).where(KnowledgeReleaseRow.content_sha256 == digest))
+            return KnowledgeRelease.model_validate(row) if row else None
+
+    def register_release(self, release: KnowledgeRelease) -> KnowledgeRelease:
+        with self.sessions.begin() as session:
+            session.add(KnowledgeReleaseRow(**release.model_dump()))
+        return release
+
+    def get_active_release(self) -> KnowledgeRelease | None:
+        with self.sessions() as session:
+            active = session.get(ActiveKnowledgeRow, 1)
+            return KnowledgeRelease.model_validate(session.get(KnowledgeReleaseRow, active.document_id)) if active else None
+
+    def activate_release(self, document_id: str) -> KnowledgeRelease:
+        with self.sessions.begin() as session:
+            session.execute(select(IngestionLockRow).where(IngestionLockRow.id == 1).with_for_update()).scalar_one()
+            release = session.get(KnowledgeReleaseRow, document_id)
+            document = session.get(DocumentRow, document_id)
+            if release is None or document is None or document.ingestion_status != Status.READY:
+                raise AppError("Only an indexed, verified knowledge release can be activated.", "knowledge_not_ready", 409)
+            active = session.get(ActiveKnowledgeRow, 1)
+            if active:
+                active.document_id = document_id
+            else:
+                session.add(ActiveKnowledgeRow(id=1, document_id=document_id))
+            return KnowledgeRelease.model_validate(release)
 
     def get_question_answer_history(
         self, document_id: str | None = None, limit: int = 50, offset: int = 0

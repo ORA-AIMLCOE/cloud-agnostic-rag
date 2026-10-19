@@ -1,5 +1,6 @@
 .env
-# This personalized example contains the real development database password.
+# Personal reference document; excluded from project publishing.
+docs/Adarsh_Mishra_RAG_Profile.txt
 .venv/
 __pycache__/
 *.py[cod]

@@ -1,67 +1,16 @@
-# aws_rag
+# Distributor Aggregator
 
-A document question-answering application built with React, FastAPI, LangGraph and PostgreSQL.
-AWS adapters provide S3 storage, Bedrock Knowledge Base retrieval/indexing, and Bedrock Converse inference.
-The frontend, APIs, domain models, workflow and persistence are provider independent. OCI adapters are explicit
-future extension points, not a working OCI deployment.
+An AWS-backed question-answering app for BlueDart, Delhivery, Ekart and DTDC. One administrator-prepared document is ingested ahead of time; users ask questions and receive answers with source citations. The included document contains clearly labelled fictional demo data.
 
-## Start with your existing environment
+The React frontend, FastAPI API and LangGraph workflow retain the existing S3, Bedrock Knowledge Base, embedding model, answer model and RDS integrations. Distributor mode isolates questions and history to the active document. Document uploads are managed through a local administrator command.
 
-Your Sydney AWS setup is configured. Follow [your verified run instructions](docs/your-aws-setup.md),
-including the private database tunnel. The personalized `.env.example` contains the database password
-and is excluded from Git. The generic local-Docker alternative follows below.
+## Run and integrate
 
-From this project directory in PowerShell:
+Follow [the local run guide and API contract](docs/distributor-aggregator.md). The local UI is at http://127.0.0.1:5173/ and the authenticated integration endpoint is `POST http://127.0.0.1:8000/api/v1/answers`.
 
-```powershell
-& 'C:\Users\adarshmi\Desktop\EXPLORE\0_virtual_environment\aws_rag_env\Scripts\Activate.ps1'
-python -m pip install -r backend/requirements.lock.txt
-Copy-Item .env.example .env
-```
+The current distributor update is local. The [existing VM runbook](docs/oci-vm-deployment.md) describes the earlier deployment; the new version has not been deployed there. OCI conversion remains a later step.
 
-Set `.env` with your AWS region, Converse model/inference-profile ID, private S3 bucket,
-Knowledge Base ID and S3 data-source ID. Set `AWS_KB_MODE=managed` for a Managed Knowledge Base,
-or `conventional` for a customer-managed VECTOR KB. `AWS_PROFILE` in `.env` selects the local profile;
-omit it to use the default credential chain or an AWS workload role.
-
-Start a local PostgreSQL database (Docker Desktop must be running):
-
-```powershell
-docker compose up -d postgres
-cd backend
-python -m alembic upgrade head
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-access-log
-```
-
-In a second terminal:
-
-```powershell
-cd frontend
-npm ci
-npm run dev
-```
-
-Open **http://localhost:5173**. Backend API docs are at **http://localhost:8000/docs**.
-Check `/api/readiness` before uploading. Use PDF, UTF-8 TXT, or Markdown up to 10 MB. Q&A is enabled only when
-indexing and document-filtered retrieval confirm readiness. Sources expand to the retrieved text; History
-persists across page reloads. Keep the page open to retry queued ingestion automatically.
-
-With Managed Knowledge Bases, PDFs must have a readable native text layer on every page. The app retains
-the original PDF and indexes extracted text, avoiding image-caption summaries of dense layouts. Scanned
-PDFs need OCR first. The extraction limits are 200 pages and two million text characters per PDF.
-
-If using an existing PostgreSQL/RDS database, set DATABASE_URL and skip the local Postgres command.
-RDS requires private network access and TLS; the [AWS guide](docs/aws-setup.md) covers this and infrastructure setup.
-No resources are automatically created by starting the application.
-
-To run all application services in Docker with a local AWS profile:
-
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.profile.yml up --build
-```
-
-Open http://localhost:8080. The migration container applies Alembic before backend startup. Compose uses a
-local database; use the ECS deployment template for RDS/CloudWatch deployments.
+Keep the existing private `.env`; do not overwrite it with a template. Start the database tunnel with `scripts/start-db-tunnel.ps1`, apply migrations, start the backend on loopback port 8000, and start the frontend on port 5173. See the linked guide for exact commands, ingestion, rollback, API keys, and five demo questions.
 
 ## Test without AWS credentials
 
@@ -113,13 +62,15 @@ aws_rag/
 
 | Method | Route | Behavior |
 |---|---|---|
-| POST | `/api/documents/upload` | Multipart field `file`; persist and request indexing |
-| GET | `/api/documents` | Paginated documents (`limit`, `offset`) |
+| POST | `/api/documents/upload` | Disabled in distributor mode; use the administrator ingestion command |
+| GET | `/api/documents` | Active distributor document only |
 | GET | `/api/documents/{id}/status` | Reconcile indexing/searchability and retry queued starts |
-| POST | `/api/questions/ask` | JSON `{ "document_id": "...", "question": "..." }` |
-| GET | `/api/questions/history` | Optional `document_id`, `limit`, `offset` |
+| POST | `/api/questions/ask` | Browser route; JSON `{ "question": "..." }`, active document selected automatically |
+| POST | `/api/v1/answers` | Integration route; Bearer API key and JSON `{ "question": "..." }` |
+| GET | `/api/knowledge` | Active document readiness, version and demo-data label |
+| GET | `/api/questions/history` | Active document history; `limit`, `offset` |
 | GET | `/api/health` | Liveness |
-| GET | `/api/readiness` | Database/schema and configured index checks |
+| GET | `/api/readiness` | Database, configured index and active knowledge checks |
 
 Errors use `{ "error": { "code", "message", "request_id" } }`. Successful answers include question, answer,
 document ID, actual retrieved source references, model ID, timestamps and latency. Provider exceptions are
@@ -127,8 +78,9 @@ sanitized; normal logs omit question/answer text, document contents, credentials
 
 ## Scope and migration
 
-This is a **single-user POC with no login or tenant isolation**. Run locally or behind an authenticated private
-gateway. The `owner_id` field is scaffolding, not access control. No OCR, durable background worker, chat-memory
+This is a **shared-workspace POC without per-user or tenant isolation**. The integration route requires an API key;
+browser routes require loopback access or an authenticated private gateway. The `owner_id` field is scaffolding,
+not access control. No OCR, durable background worker, chat-memory
 grounding, streaming responses, or automatic replay deduplication is included. Failed model/retrieval/database
 requests do not create successful history entries; a disconnect after commit can leave an answer in history.
 

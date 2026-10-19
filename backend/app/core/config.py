@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     ingestion_timeout_seconds: int = Field(default=3600, ge=60)
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
     log_level: str = "INFO"
+    distributor_mode: bool = True
+    integration_api_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    integration_requests_per_minute: int = Field(default=30, ge=1, le=300)
+    integration_max_concurrent: int = Field(default=2, ge=1, le=10)
 
     @model_validator(mode="after")
     def safe_prefix(self):

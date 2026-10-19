@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 
+from app.api.integration import IntegrationLimiter
+from app.api.integration import router as integration_router
 from app.api.routes import router
 from app.core.config import Settings, get_settings
 from app.core.dependencies import Container, build_container
@@ -41,7 +43,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 app.state.container.engine.dispose()
             log.info("application_stopped")
 
-    app = FastAPI(title="aws_rag", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="Distributor Aggregator", version="2.0.0", lifespan=lifespan)
+    app.state.integration_limiter = IntegrationLimiter(settings.integration_requests_per_minute, settings.integration_max_concurrent)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -61,6 +64,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 log.error("unhandled_api_failure", extra={"error_type": type(exc).__name__})
                 response = error_response("internal_error", "The request could not be completed.", 500)
             response.headers["X-Request-ID"] = request_id.get()
+            response.headers["Cache-Control"] = "no-store"
+            if response.status_code == 429:
+                response.headers["Retry-After"] = "60"
+            if response.status_code == 401:
+                response.headers["WWW-Authenticate"] = "Bearer"
             log.info(
                 "api_request",
                 extra={
@@ -96,6 +104,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         )
 
     app.include_router(router)
+    app.include_router(integration_router)
     return app
 
 

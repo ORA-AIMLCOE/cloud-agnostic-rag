@@ -50,6 +50,7 @@ def build_container(
         settings.top_k,
         settings.context_max_chars,
         settings.max_question_chars,
+        settings.distributor_mode,
     )
     return Container(settings, providers, repository, documents, graph, engine)
 
