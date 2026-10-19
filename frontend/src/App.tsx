@@ -115,7 +115,7 @@ export default function App() {
     [jobs, setJobs] = useState<Job[]>([]),
     [job, setJob] = useState<Job | null>(null);
   const [repo, setRepo] = useState(""),
-    [branch, setBranch] = useState("aws_rag"),
+    [branch, setBranch] = useState("aws_app"),
     [token, setToken] = useState(""),
     [env, setEnv] = useState(""),
     [envName, setEnvName] = useState("");
@@ -524,7 +524,7 @@ export default function App() {
                     <input
                       type="url"
                       required
-                      placeholder="https://github.com/your-team/aws_rag"
+                      placeholder="https://github.com/your-team/aws_app"
                       value={repo}
                       onChange={(e) => setRepo(e.target.value)}
                     />

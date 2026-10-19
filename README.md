@@ -1,13 +1,13 @@
 # AWS to OCI Converter (Cloudshift)
 
-A local, single-user conversion application for the `aws_rag` project. Inspect a GitHub branch,
+A conversion application for the Distributor Aggregator project. Inspect a GitHub branch,
 configure existing OCI resources, use OCI-hosted Astra to review/adapt a versioned OCI recipe,
 validate the result, and publish a new branch in the same repository. The original branch is preserved.
 
 ## Repository branches
 
 In `ORA-AIMLCOE/cloud-agnostic-rag`, `main` contains this Cloudshift converter and
-`aws_rag` contains the source AWS RAG application. Select `aws_rag` as the source branch
+`aws_app` contains the source Distributor Aggregator application. Select `aws_app` as the source branch
 when inspecting this repository in the converter; it is the form's default.
 Generated OCI projects are published to separate `migration/oci-*` branches.
 
@@ -84,7 +84,7 @@ configured independently in the UI.
 
 ## Distributor Aggregator source
 
-The recipe supports the updated aws_rag branch with prepared distributor knowledge and a Bearer-authenticated
+The recipe supports the updated aws_app branch with prepared distributor knowledge and a Bearer-authenticated
 integration API. Start a new inspection to pin the latest source commit; existing jobs keep their old snapshots.
 The source UI, API routes, prompts, comparison retrieval, admin CLI and history stay unchanged.
 Oracle persistence copies include knowledge_releases and active_knowledge so activation and rollback work.
