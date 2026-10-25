@@ -31,14 +31,18 @@ def build_container(
         providers.ingestion.validate_configuration()
     engine = None
     if repository is None:
-        engine, sessions = create_database(settings.database_url)
-        repository = SQLAlchemyRepository(sessions)
+        if settings.cloud_provider == "oci":
+            from app.providers.oci.database import create_oracle_repository
+            engine, repository = create_oracle_repository()
+        else:
+            engine, sessions = create_database(settings.database_url)
+            repository = SQLAlchemyRepository(sessions)
     documents = DocumentService(
         providers.storage,
         providers.ingestion,
         providers.vector,
         repository,
-        settings.aws_s3_prefix,
+        settings.object_storage_prefix if settings.cloud_provider == "oci" else settings.aws_s3_prefix,
         settings.max_upload_bytes,
         settings.ingestion_timeout_seconds,
     )

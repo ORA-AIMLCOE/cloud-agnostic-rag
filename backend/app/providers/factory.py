@@ -18,9 +18,9 @@ class Providers:
 def create_providers(settings: Settings) -> Providers:
     settings.validate_provider()
     if settings.cloud_provider == "oci":
-        raise NotImplementedError(
-            "OCI adapters are extension points. Implement and contract-test them before enabling OCI."
-        )
+        from app.providers.oci.factory import create_oci_providers
+
+        return create_oci_providers()
     if settings.cloud_provider == "aws":
         import boto3
 

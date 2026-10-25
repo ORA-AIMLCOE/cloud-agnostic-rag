@@ -18,3 +18,12 @@ dist/
 .tools/
 *.tsbuildinfo
 *.plan
+
+# OCI runtime credentials
+.env
+config/oci/
+*.pem
+config/wallet/
+Wallet*.zip
+*.p12
+*.sso

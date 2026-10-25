@@ -86,7 +86,7 @@ def test_sdk_boundary():
 
 
 def test_factory_oci_fails_explicitly():
-    with pytest.raises(NotImplementedError, match="extension points"):
+    with pytest.raises(ValueError):
         create_providers(Settings(_env_file=None, cloud_provider="oci"))
 
 
