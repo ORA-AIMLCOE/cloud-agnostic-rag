@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     aws_profile: str = ""
     aws_bedrock_model_id: str = ""
     aws_s3_bucket: str = ""
+    object_storage_prefix: str = "documents/"
     aws_s3_prefix: str = "documents/"
     aws_knowledge_base_id: str = ""
     aws_kb_data_source_id: str = ""
@@ -37,6 +38,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def safe_prefix(self):
+        self.object_storage_prefix = self.object_storage_prefix.strip("/") + "/"
+        if self.object_storage_prefix == "/" or ".." in self.object_storage_prefix:
+            raise ValueError("Use a nonempty dedicated object prefix without '..'.")
         self.aws_s3_prefix = self.aws_s3_prefix.strip("/") + "/"
         if self.aws_s3_prefix == "/" or ".." in self.aws_s3_prefix:
             raise ValueError("Use a nonempty dedicated document prefix without '..'.")
